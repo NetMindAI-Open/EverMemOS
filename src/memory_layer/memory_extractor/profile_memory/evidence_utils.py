@@ -255,6 +255,50 @@ def merge_evidences_recursive(
                 path=f"{path}[{target_idx}]",
             )
 
+def remove_entries_without_evidence(payload: Any, *, path: str = "user_profile") -> Any:
+    """
+    Recursively remove entries that lack evidences after completion.
+
+    Args:
+        payload: Arbitrary profile payload structure.
+        path: Logical path for debugging output.
+
+    Returns:
+        The sanitized payload. Returns None when a branch should be removed.
+    """
+    if isinstance(payload, dict):
+        for key in list(payload.keys()):
+            if key == "evidences":
+                continue
+            cleaned = remove_entries_without_evidence(
+                payload[key], path=f"{path}.{key}"
+            )
+            if cleaned is None:
+                payload.pop(key, None)
+            else:
+                payload[key] = cleaned
+
+        if "evidences" in payload:
+            normalized = ensure_str_list(payload["evidences"])
+            if not normalized:
+                logger.debug("Removing entry at %s due to empty evidences", path)
+                return None
+            payload["evidences"] = normalized
+
+        if not payload:
+            return None
+        return payload
+
+    if isinstance(payload, list):
+        sanitized: List[Any] = []
+        for index, item in enumerate(payload):
+            cleaned = remove_entries_without_evidence(item, path=f"{path}[{index}]")
+            if cleaned is None:
+                continue
+            sanitized.append(cleaned)
+        return sanitized or None
+
+    return payload
 
 __all__ = [
     "ensure_str_list",

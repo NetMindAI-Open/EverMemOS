@@ -35,7 +35,7 @@ from .data_normalize import (
     profile_payload_to_memory,
     remove_evidences_from_profile,
 )
-from .evidence_utils import filter_opinion_tendency_by_type
+from .evidence_utils import filter_opinion_tendency_by_type, remove_entries_without_evidence           
 from .project_helpers import filter_project_items_by_type
 from .merger import convert_important_info_to_evidence
 from .types import GroupImportanceEvidence, ImportanceEvidence, ProfileMemory, ProfileMemoryExtractRequest, ProjectInfo
@@ -389,7 +389,9 @@ class ProfileMemoryExtractor(MemoryExtractor):
             llm_provider=self.llm_provider,
             parse_payload=self._parse_profile_response_payload,
         )
-
+        for profile_data in filtered_profiles_data:
+            remove_entries_without_evidence(profile_data)
+            
         profile_memories: List[ProfileMemory] = []
         for profile_data in filtered_profiles_data:
             if not isinstance(profile_data, dict):
