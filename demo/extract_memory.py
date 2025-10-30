@@ -1044,6 +1044,7 @@ async def extract_and_dump(
             new_raw_data_list=[raw_item],
             user_id_list=[],
             group_id=extract_config.group_id,
+            smart_mask_flag=True,
         )
 
         # 5. 执行 MemCell 提取（带性能追踪）
@@ -1191,7 +1192,7 @@ async def extract_and_dump(
                                     )
 
             # 重置历史记录
-            history = [history[-1], raw_item]
+            history = [raw_item]
 
             # 更新进度追踪
             if progress_tracker:

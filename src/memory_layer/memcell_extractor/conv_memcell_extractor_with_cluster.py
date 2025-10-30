@@ -57,8 +57,8 @@ class ConversationMemCellExtractRequest(MemCellExtractRequest):
 
 @dataclass
 class ClusteringParams:
-    max_link_gap_seconds: int = 30 * 60
-    similarity_threshold: float = 0.5
+    max_link_gap_seconds: int = 7 * 24 * 60 * 60
+    similarity_threshold: float = 0.65
 
 
 # Embeddings are provided by shared vectorize_service; legacy HTTP client removed
