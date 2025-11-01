@@ -29,33 +29,22 @@ from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime, timedelta
 from dataclasses import dataclass
 
-# 确保 src 包可被发现
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-src_path = str(PROJECT_ROOT / "src")
-if src_path not in sys.path:
-    sys.path.insert(0, src_path)
 
-# 确保项目根目录在路径中
-project_root = str(PROJECT_ROOT)
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
 
 # 尝试导入 readline 以支持行编辑功能
-try:
-    import readline
 
-    READLINE_AVAILABLE = True
-except ImportError:
-    READLINE_AVAILABLE = False
+import readline
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+READLINE_AVAILABLE = True
 
-from memory_config import (
+from .memory_config import (
     ChatModeConfig,
     LLMConfig,
     EmbeddingConfig,
     MongoDBConfig,
     ScenarioType,
 )
-from memory_utils import (
+from .memory_utils import (
     ensure_mongo_beanie_ready,
     query_all_groups_from_mongodb,
     query_memcells_by_group_and_time,
@@ -63,10 +52,10 @@ from memory_utils import (
     get_user_name_from_profile,
     VectorSimilarityStrategy,
 )
-from i18n_texts import I18nTexts
-from src.memory_layer.llm.llm_provider import LLMProvider
-from src.common_utils.datetime_utils import get_now_with_timezone
-from src.common_utils.cli_ui import CLIUI
+from .i18n_texts import I18nTexts
+from memory_layer.llm.llm_provider import LLMProvider
+from common_utils.datetime_utils import from_iso_format, get_now_with_timezone
+from common_utils.cli_ui import CLIUI
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -558,7 +547,7 @@ class ChatSession:
             query=query, candidates=candidates, top_k=self.config.top_k_memories
         )
 
-        if self.config.scenario_type == ScenarioType.ASSISTANT:
+        if self.scenario_type == ScenarioType.ASSISTANT:
             results_semantic = await self.retrieval_strategy.retrieve_semantic(
                 query=query,
                 candidates=candidates,

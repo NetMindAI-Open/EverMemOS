@@ -17,9 +17,10 @@ class LLMProvider:
         self,
         prompt: str,
         temperature: float | None = None,
+        max_tokens: int | None = None,
         extra_body: dict | None = None,
         response_format: dict | None = None,
     ) -> str:
         return await self.provider.generate(
-            prompt, temperature, self.provider.max_tokens, extra_body, response_format
+            prompt, temperature, max_tokens, extra_body, response_format
         )

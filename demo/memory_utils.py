@@ -31,17 +31,9 @@ from beanie import init_beanie
 # 导入项目中的文档模型
 import sys
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-src_path = str(PROJECT_ROOT / "src")
-if src_path not in sys.path:
-    sys.path.insert(0, src_path)
 
-# 确保项目根目录在路径中
-project_root = str(PROJECT_ROOT)
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
 
-from src.infra_layer.adapters.out.persistence.document.memory.memcell import (
+from infra_layer.adapters.out.persistence.document.memory.memcell import (
     MemCell as DocMemCell,
 )
 from demo.memory_config import MongoDBConfig, EmbeddingConfig
@@ -271,11 +263,11 @@ class BatchMongoWriter:
         Returns:
             DocMemCell 文档对象
         """
-        from src.infra_layer.adapters.out.persistence.document.memory.memcell import (
+        from infra_layer.adapters.out.persistence.document.memory.memcell import (
             MemCell as DocMemCell,
             DataTypeEnum,
         )
-        from src.common_utils.datetime_utils import (
+        from common_utils.datetime_utils import (
             from_iso_format,
             get_now_with_timezone,
         )
