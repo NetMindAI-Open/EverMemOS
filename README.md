@@ -20,8 +20,9 @@
 
 > 💬 **More than memory — it's foresight.**
 
-**EverMemOS** is a forward-thinking intelligent system.  
-While traditional AI memory serves merely as a "look-back" database, EverMemOS enables AI not only to "remember" what happened, but also to "understand" the meaning behind these memories and use them to guide current actions and decisions. On the **LoCoMo** benchmark, our approach built upon EverMemOS achieved a reasoning accuracy of **92.3%** (evaluated by LLM-Judge), outperforming comparable methods in our evaluation.
+**EverMemOS** is a forward-thinking **intelligent system**.  
+While traditional AI memory serves merely as a "look-back" database, EverMemOS enables AI not only to "remember" what happened, but also to "understand" the meaning behind these memories and use them to guide current actions and decisions. In the EverMemOS demo tools, you can see how EverMemOS extracts important information from your history, and then remembers your preferences, habits, and history during conversations, just like a **friend** who truly knows you.
+On the **LoCoMo** benchmark, our approach built upon EverMemOS achieved a reasoning accuracy of **92.3%** (evaluated by LLM-Judge), outperforming comparable methods in our evaluation.
 
 ---
 
@@ -31,10 +32,12 @@ While traditional AI memory serves merely as a "look-back" database, EverMemOS e
 <tr>
 <td width="100%" style="border: none;">
 
-**[2025-10-28] 🎉 v1.0.0 Stable Release!**
+**[2025-11-02] 🎉 🎉 🎉 EverMemOS v1.0.0 Released!**
 
 - ✨ **Stable Version**: AI Memory System officially open sourced  
 - 📚 **Complete Documentation**: Quick start guide and comprehensive API documentation  
+- 📈 **Benchmark Testing**: LoCoMo dataset benchmark evaluation pipeline
+- 🖥️ **Demo Tools**: Get started quickly with easy-to-use demos
 
 </td>
 </tr>
@@ -163,14 +166,16 @@ memsys-opensource/
 │   │   ├── memcell_extractor/        # MemCell extractor
 │   │   ├── memory_extractor/         # Memory extractor
 │   │   └── prompts/                  # LLM prompt templates
+│   ├── retrieval_layer/              # Retrieval layer - memory retrieval
 │   ├── biz_layer/                    # Business layer - business logic
 │   ├── infra_layer/                  # Infrastructure layer
 │   ├── core/                         # Core functionality (DI/lifecycle/middleware)
 │   ├── component/                    # Components (LLM adapters, etc.)
 │   └── common_utils/                 # Common utilities
-├── demo/                             # Demo code → [📖 Demo Guide](demo/README.md)
-├── data/                             # Sample conversation data → [📊 Data Guide](data/README.md)
+├── demo/                             # Demo code
+├── data/                             # Sample conversation data
 ├── evaluation/                       # Evaluation scripts
+│   └── locomo_evaluation/            # LoCoMo benchmark testing
 ├── data_format/                      # Data format definitions
 ├── docs/                             # Documentation
 ├── config.json                       # Configuration file
@@ -386,6 +391,7 @@ For detailed installation, configuration, and usage instructions, please refer t
 ### Demos & Evaluation
 - [📖 Demo Guide](demo/README.md) - Interactive examples and memory extraction demos
 - [📊 Data Guide](data/README.md) - Sample conversation data and format specifications
+- [📊 Evaluation Guide](evaluation/locomo_evaluation/README.md) - Testing EverMemOS-based methods on the public LoCoMo dataset
 
 ## 🏗️ Architecture Design
 
