@@ -2,23 +2,13 @@ import asyncio
 import json
 import logging
 import os
-
-os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 import sys
 import time
 from pathlib import Path
 
-import nltk
 import numpy as np
-import transformers
-from bert_score import score as bert_score
-from nltk.translate.bleu_score import SmoothingFunction, sentence_bleu
-from nltk.translate.meteor_score import meteor_score
 from openai import AsyncOpenAI
 from pydantic import BaseModel, Field
-from rouge_score import rouge_scorer
-from scipy.spatial.distance import cosine
-from sentence_transformers import SentenceTransformer
 from tqdm import tqdm
 
 # Ensure project root is on sys.path
@@ -30,23 +20,6 @@ if PROJECT_ROOT not in sys.path:
 from evaluation.locomo_evaluation.config import ExperimentConfig
 
 logging.basicConfig(level=logging.CRITICAL)
-transformers.logging.set_verbosity_error()
-
-# Download necessary NLTK resources
-try:
-    nltk.download("wordnet", quiet=True)
-    nltk.download("punkt", quiet=True)
-    print("NLTK resources downloaded successfully.")
-except Exception as e:
-    print(f"Warning: Failed to download NLTK resources: {e}")
-
-try:
-    sentence_model_name = "Qwen/Qwen3-Embedding-0.6B"
-    # sentence_model = SentenceTransformer(sentence_model_name)
-    print(f"SentenceTransformer model : {sentence_model_name} loaded successfully.")
-except Exception as e:
-    print(f"Failed to load SentenceTransformer model: {e}")
-    sentence_model = None
 
 
 class LLMGrade(BaseModel):
@@ -104,131 +77,6 @@ async def locomo_grader(
     return parsed.llm_judgment.strip().lower() == "correct"
 
 
-def calculate_rouge_scores(gold_answer, response):
-    metrics = {"rouge1_f": 0.0, "rouge2_f": 0.0, "rougeL_f": 0.0}
-    try:
-        scorer = rouge_scorer.RougeScorer(
-            ["rouge1", "rouge2", "rougeL"], use_stemmer=True
-        )
-        rouge_scores = scorer.score(gold_answer, response)
-        metrics["rouge1_f"] = rouge_scores["rouge1"].fmeasure
-        metrics["rouge2_f"] = rouge_scores["rouge2"].fmeasure
-        metrics["rougeL_f"] = rouge_scores["rougeL"].fmeasure
-    except Exception as e:
-        print(f"Failed to calculate ROUGE scores: {e}")
-    return metrics
-
-
-def calculate_bleu_scores(gold_tokens, response_tokens):
-    metrics = {"bleu1": 0.0, "bleu2": 0.0, "bleu3": 0.0, "bleu4": 0.0}
-
-    try:
-        smoothing = SmoothingFunction().method1
-        weights = [
-            (1, 0, 0, 0),
-            (0.5, 0.5, 0, 0),
-            (0.33, 0.33, 0.33, 0),
-            (0.25, 0.25, 0.25, 0.25),
-        ]
-
-        for i, weight in enumerate(weights, 1):
-            metrics[f"bleu{i}"] = sentence_bleu(
-                [gold_tokens],
-                response_tokens,
-                weights=weight,
-                smoothing_function=smoothing,
-            )
-    except ZeroDivisionError:
-        pass
-    except Exception as e:
-        print(f"Failed to calculate BLEU scores: {e}")
-
-    return metrics
-
-
-def calculate_meteor_score(gold_tokens, response_tokens):
-    try:
-        return meteor_score([gold_tokens], response_tokens)
-    except Exception as e:
-        print(f"Failed to calculate METEOR score: {e}")
-        return 0.0
-
-
-def calculate_semantic_similarity(gold_answer, response):
-    global sentence_model
-
-    try:
-        if sentence_model is None:
-            sentence_model = SentenceTransformer("Qwen/Qwen3-Embedding-0.6B")
-
-        gold_embedding = sentence_model.encode([gold_answer], show_progress_bar=False)[
-            0
-        ]
-        response_embedding = sentence_model.encode([response], show_progress_bar=False)[
-            0
-        ]
-        return 1 - cosine(gold_embedding, response_embedding)
-    except Exception as e:
-        print(f"Failed to calculate semantic similarity: {e}")
-        return 0.0
-
-
-def calculate_f1_score(gold_tokens, response_tokens):
-    try:
-        gold_set = set(gold_tokens)
-        response_set = set(response_tokens)
-
-        if len(gold_set) == 0 or len(response_set) == 0:
-            return 0.0
-
-        precision = len(gold_set.intersection(response_set)) / len(response_set)
-        recall = len(gold_set.intersection(response_set)) / len(gold_set)
-
-        if precision + recall > 0:
-            return 2 * precision * recall / (precision + recall)
-        return 0.0
-    except Exception as e:
-        print(f"Failed to calculate F1 score: {e}")
-        return 0.0
-
-
-def calculate_nlp_metrics(gold_answer, response, context, options=None):
-    if options is None:
-        options = ["lexical", "semantic"]
-
-    gold_answer = str(gold_answer) if gold_answer is not None else ""
-    response = str(response) if response is not None else ""
-
-    metrics = {"context_tokens": len(nltk.word_tokenize(context)) if context else 0}
-
-    if "lexical" in options:
-        gold_tokens = nltk.word_tokenize(gold_answer.lower())
-        response_tokens = nltk.word_tokenize(response.lower())
-
-        metrics["lexical"] = {}
-        metrics["lexical"]["f1"] = calculate_f1_score(gold_tokens, response_tokens)
-        metrics["lexical"].update(calculate_rouge_scores(gold_answer, response))
-        metrics["lexical"].update(calculate_bleu_scores(gold_tokens, response_tokens))
-        metrics["lexical"]["meteor"] = calculate_meteor_score(
-            gold_tokens, response_tokens
-        )
-
-    if "semantic" in options:
-        metrics["semantic"] = {}
-        metrics["semantic"]["similarity"] = calculate_semantic_similarity(
-            gold_answer, response
-        )
-        _, _, f1 = bert_score(
-            [gold_answer],
-            [response],
-            lang="en",
-            rescale_with_baseline=True,
-            verbose=False,
-        )
-        metrics["semantic"]["bert_f1"] = f1.item() if f1 is not None else 0.0
-
-    return metrics
-
 
 def convert_numpy_types(obj):
     if isinstance(obj, np.number):
@@ -242,7 +90,7 @@ def convert_numpy_types(obj):
 
 
 async def process_group_responses(
-    group_id, group_responses, oai_client, options, num_runs: int
+    group_id, group_responses, oai_client, num_runs: int
 ):
     graded_responses = []
 
@@ -267,7 +115,6 @@ async def process_group_responses(
         judgments = await asyncio.gather(*grading_tasks)
         judgments_dict = {f"judgment_{i + 1}": j for i, j in enumerate(judgments)}
 
-        # nlp_metrics = calculate_nlp_metrics(ground_truth, answer, context, options)
         nlp_metrics = {}
         graded_response = {
             "question": question,
@@ -286,12 +133,12 @@ async def process_group_responses(
 
 
 async def process_single_group(
-    group_id, group_responses, oai_client, options, num_runs
+    group_id, group_responses, oai_client, num_runs
 ):
     try:
         start_time = time.time()
         result = await process_group_responses(
-            group_id, group_responses, oai_client, options, num_runs
+            group_id, group_responses, oai_client, num_runs
         )
         end_time = time.time()
         elapsed_time = round(end_time - start_time, 2)
@@ -304,16 +151,11 @@ async def process_single_group(
 
 async def main():
     # --- Configuration ---
-    frame = "nemori"
     config = ExperimentConfig()
     version = config.experiment_name
     num_runs = 3
-    options = ["lexical", "semantic"]
     max_workers = 10
 
-    print(
-        f"\n=== Starting LoCoMo evaluation for {frame} (version: {version}) with {num_runs} run(s) per question ==="
-    )
     print(f"Using {max_workers} concurrent workers for processing groups")
 
     # --- Path Setup ---
@@ -362,7 +204,7 @@ async def main():
         active_users += 1
         tasks.append(
             process_single_group(
-                group_id, group_responses, oai_client, options, num_runs
+                group_id, group_responses, oai_client, num_runs
             )
         )
 
