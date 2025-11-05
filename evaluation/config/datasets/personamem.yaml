@@ -1,0 +1,29 @@
+# PersonaMem Dataset Configuration
+
+name: "personamem"
+version: "1.0"
+description: "Persona Memory benchmark for long-context personalization"
+
+# Data configuration
+data:
+  path: "personamem"  # Directory containing raw and converted files
+  format: "personamem"  # Needs conversion to Locomo format
+  
+  # Converter will look for:
+  # - personamem/questions_32k.csv (raw)
+  # - personamem/shared_contexts_32k.jsonl (raw)
+  # - personamem/personamem_32k_locomo_style.json (converted, auto-generated)
+
+# Evaluation configuration
+evaluation:
+  type: "llm_judge"
+  
+  llm:
+    provider: "openai"
+    model: "gpt-4o-mini"
+    api_key: "${LLM_API_KEY}"
+    base_url: "${LLM_BASE_URL:https://openrouter.ai/api/v1}"
+  
+  num_runs: 3
+  filter_category: []  # No filtering
+

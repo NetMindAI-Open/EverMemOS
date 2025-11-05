@@ -1,0 +1,18 @@
+# EverMemOS System Configuration
+
+name: "evermemos"
+version: "1.0"
+description: "EverMemOS - Advanced episodic memory system"
+
+adapter: "evermemos"
+
+# LLM configuration
+llm:
+  provider: "openai"
+  model: "openai/gpt-4.1-mini"
+  api_key: "${LLM_API_KEY}"
+  base_url: "${LLM_BASE_URL:https://openrouter.ai/api/v1}"
+
+search:
+  mode: "agentic"  # agentic | lightweight
+

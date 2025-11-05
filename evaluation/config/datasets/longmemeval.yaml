@@ -1,0 +1,28 @@
+# LongMemEval Dataset Configuration
+
+name: "longmemeval"
+version: "1.0"
+description: "Long-term Memory Evaluation benchmark"
+
+# Data configuration
+data:
+  path: "longmemeval"  # Directory containing raw and converted files
+  format: "longmemeval"  # Needs conversion to Locomo format
+  
+  # Converter will look for:
+  # - longmemeval/longmemeval_s_cleaned.json (raw)
+  # - longmemeval/longmemeval_s_locomo_style.json (converted, auto-generated)
+
+# Evaluation configuration
+evaluation:
+  type: "llm_judge"
+  
+  llm:
+    provider: "openai"
+    model: "gpt-4o-mini"
+    api_key: "${LLM_API_KEY}"
+    base_url: "${LLM_BASE_URL:https://openrouter.ai/api/v1}"
+  
+  num_runs: 3
+  filter_category: []  # No filtering
+
