@@ -51,38 +51,53 @@ demo/
 ## 🎯 Core Scripts
 
 ### 1. `simple_demo.py` - Quick Start Example ⭐
-- **Simplest way to use MemSys** with just a few lines of code
-- Demonstrates how to add and search memories
-- Perfect for quickly understanding MemSys core functionality
-- **Dependencies**: `simple_memory_manager.py`
 
+**The simplest way to experience EverMemOS!** Just 67 lines of code demonstrating the complete memory workflow.
+
+**What it demonstrates:**
+- 💾 **Store**: Save conversation messages via HTTP API
+- ⏳ **Index**: Wait for data to be indexed (MongoDB, Elasticsearch, Milvus)
+- 🔍 **Search**: Retrieve relevant memories with natural language queries
+
+**Code example:**
 ```python
 from demo.simple_memory_manager import SimpleMemoryManager
 
-# Create manager
+# Create memory manager
 memory = SimpleMemoryManager()
 
-# Add memory
-await memory.add_memory(
-    messages=[
-        {"role": "user", "content": "I like playing football"},
-        {"role": "assistant", "content": "Football is a great sport!"},
-    ],
-    group_id="sports_chat"
-)
+# Store conversations
+await memory.store("I love playing soccer, often go to the field on weekends")
+await memory.store("Soccer is a great sport! Which team do you like?", sender="Assistant")
+await memory.store("I love Barcelona the most, Messi is my idol")
 
-# Search memory
-results = await memory.search_memory(
-    query="What sport does the user like?",
-    group_id="sports_chat"
-)
-print(results)  # ["I like playing football", ...]
+# Wait for indexing
+await memory.wait_for_index(seconds=10)
+
+# Search memories
+await memory.search("What sports does the user like?")
+await memory.search("What is the user's favorite team?")
 ```
 
-**How to run**:
+**How to run:**
+
+⚠️ **Important**: You must start the API server first!
+
 ```bash
+# Terminal 1: Start the API server
+uv run python src/bootstrap.py start_server.py
+
+# Terminal 2: Run the simple demo
 uv run python src/bootstrap.py demo/simple_demo.py
 ```
+
+**Why this demo?**
+- ✅ Minimal code - understand core concepts in seconds
+- ✅ Complete workflow - storage → indexing → retrieval
+- ✅ Friendly output - explanations for every step
+- ✅ Real HTTP API - uses the same API as production
+
+**Dependencies**: `simple_memory_manager.py` (HTTP API wrapper)
 
 ### 2. `extract_memory.py` - Memory Extraction
 - Processes conversation files from the `data/` directory
@@ -111,15 +126,23 @@ uv run python src/bootstrap.py demo/simple_demo.py
 
 ### Option A: Super Simple Mode (Recommended for Beginners) ⭐
 
-Run `simple_demo.py` directly for a quick experience:
+The fastest way to experience EverMemOS! Just 2 terminals:
 
 ```bash
+# Terminal 1: Start the API server (required)
+uv run python src/bootstrap.py start_server.py
+
+# Terminal 2: Run the simple demo
 uv run python src/bootstrap.py demo/simple_demo.py
 ```
 
-Wait about 10 seconds to see memory addition and search results!
+**What happens:**
+1. 📝 Stores 4 conversation messages
+2. ⏳ Waits 10 seconds for indexing (MongoDB → Elasticsearch → Milvus)
+3. 🔍 Searches memories with 3 different queries
+4. 📊 Shows results with relevance scores and explanations
 
-**Note**: First run requires ~10 seconds for data to be written to MongoDB, Elasticsearch, and Milvus.
+**Note**: The API server (`start_server.py`) must be running in a separate terminal for the demo to work.
 
 ---
 

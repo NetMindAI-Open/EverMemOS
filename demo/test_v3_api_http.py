@@ -57,7 +57,7 @@ async def test_v3_memorize_api():
     print("=" * 100)
     
     # 加载真实对话数据
-    data_file = "/Users/admin/Documents/Projects/opensource/memsys-opensource/data/assistant_chat_zh.json"
+    data_file = "data/assistant_chat_zh.json"
     try:
         test_messages, group_id, group_name = load_conversation_data(data_file)
     except FileNotFoundError as e:

@@ -51,38 +51,53 @@ demo/
 ## 🎯 核心脚本
 
 ### 1. `simple_demo.py` - 快速入门示例 ⭐
-- **最简单的使用方式**，只需几行代码
-- 演示如何添加和搜索记忆
-- 适合快速了解 MemSys 核心功能
-- **依赖**: `simple_memory_manager.py`
 
+**体验 EverMemOS 最简单的方式！** 只需 67 行代码就能演示完整的记忆工作流程。
+
+**演示内容：**
+- 💾 **存储**：通过 HTTP API 保存对话消息
+- ⏳ **索引**：等待数据被索引（MongoDB、Elasticsearch、Milvus）
+- 🔍 **搜索**：用自然语言查询检索相关记忆
+
+**代码示例：**
 ```python
 from demo.simple_memory_manager import SimpleMemoryManager
 
-# 创建管理器
+# 创建记忆管理器
 memory = SimpleMemoryManager()
 
-# 添加记忆
-await memory.add_memory(
-    messages=[
-        {"role": "user", "content": "我喜欢踢足球"},
-        {"role": "assistant", "content": "足球是很好的运动！"},
-    ],
-    group_id="sports_chat"
-)
+# 存储对话
+await memory.store("我喜欢踢足球，周末经常去球场")
+await memory.store("足球是很好的运动！你最喜欢哪个球队？", sender="助手")
+await memory.store("我最喜欢巴塞罗那队，梅西是我的偶像")
+
+# 等待索引构建
+await memory.wait_for_index(seconds=10)
 
 # 搜索记忆
-results = await memory.search_memory(
-    query="用户喜欢什么运动？",
-    group_id="sports_chat"
-)
-print(results)  # ["我喜欢踢足球", ...]
+await memory.search("用户喜欢什么运动？")
+await memory.search("用户最喜欢的球队是什么？")
 ```
 
-**运行方式**：
+**运行方式：**
+
+⚠️ **重要**：必须先启动 API 服务器！
+
 ```bash
+# 终端 1：启动 API 服务器
+uv run python src/bootstrap.py start_server.py
+
+# 终端 2：运行简单演示
 uv run python src/bootstrap.py demo/simple_demo.py
 ```
+
+**为什么选择这个演示？**
+- ✅ 代码极简 - 几秒钟就能理解核心概念
+- ✅ 完整工作流 - 存储 → 索引 → 检索
+- ✅ 友好输出 - 每一步都有说明
+- ✅ 真实 HTTP API - 使用与生产环境相同的 API
+
+**依赖**: `simple_memory_manager.py`（HTTP API 封装器）
 
 ### 2. `extract_memory.py` - 记忆提取
 - 处理 `data/` 目录中的对话文件
@@ -111,15 +126,23 @@ uv run python src/bootstrap.py demo/simple_demo.py
 
 ### 方式 A：超级简单模式（推荐新手）⭐
 
-直接运行 `simple_demo.py` 快速体验：
+体验 EverMemOS 最快的方式！只需 2 个终端：
 
 ```bash
+# 终端 1：启动 API 服务器（必需）
+uv run python src/bootstrap.py start_server.py
+
+# 终端 2：运行简单演示
 uv run python src/bootstrap.py demo/simple_demo.py
 ```
 
-等待 10 秒后即可看到记忆添加和搜索的结果！
+**发生了什么：**
+1. 📝 存储 4 条对话消息
+2. ⏳ 等待 10 秒建立索引（MongoDB → Elasticsearch → Milvus）
+3. 🔍 用 3 个不同的查询搜索记忆
+4. 📊 显示结果（相关度分数和说明）
 
-**注意**：首次运行需要等待约 10 秒，让数据写入 MongoDB、Elasticsearch 和 Milvus。
+**注意**：必须在单独的终端中运行 API 服务器（`start_server.py`），演示才能正常工作。
 
 ---
 
