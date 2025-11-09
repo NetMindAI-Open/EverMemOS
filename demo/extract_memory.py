@@ -35,7 +35,7 @@ EXTRACT_CONFIG = ExtractModeConfig(
     scenario_type=ScenarioType.ASSISTANT,  # 或 ScenarioType.GROUP_CHAT
     
     # 📂 输出目录（可选，默认为 demo/memcell_outputs/）
-    output_dir=Path(__file__).parent / "memcell_outputs" / "assistant_zh",
+    output_dir=Path(__file__).parent / "memcell_outputs" / "assistant_chat_zh",
     
     # 其他配置
     enable_profile_extraction=False,  # V4: 暂不支持 Profile 提取

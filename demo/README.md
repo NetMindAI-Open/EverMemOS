@@ -50,13 +50,47 @@ demo/
 
 ## 🎯 Core Scripts
 
-### 1. `extract_memory.py` - Memory Extraction
+### 1. `simple_demo.py` - Quick Start Example ⭐
+- **Simplest way to use MemSys** with just a few lines of code
+- Demonstrates how to add and search memories
+- Perfect for quickly understanding MemSys core functionality
+- **Dependencies**: `simple_memory_manager.py`
+
+```python
+from demo.simple_memory_manager import SimpleMemoryManager
+
+# Create manager
+memory = SimpleMemoryManager()
+
+# Add memory
+await memory.add_memory(
+    messages=[
+        {"role": "user", "content": "I like playing football"},
+        {"role": "assistant", "content": "Football is a great sport!"},
+    ],
+    group_id="sports_chat"
+)
+
+# Search memory
+results = await memory.search_memory(
+    query="What sport does the user like?",
+    group_id="sports_chat"
+)
+print(results)  # ["I like playing football", ...]
+```
+
+**How to run**:
+```bash
+uv run python src/bootstrap.py demo/simple_demo.py
+```
+
+### 2. `extract_memory.py` - Memory Extraction
 - Processes conversation files from the `data/` directory
 - Extracts MemCells and generates user profiles
 - Saves results to configured database (MongoDB) and local outputs
 - **Dependencies**: `extract/` module, `memory_config.py`, `memory_utils.py`
 
-### 2. `chat_with_memory.py` - Memory-Enhanced Chat
+### 3. `chat_with_memory.py` - Memory-Enhanced Chat
 - Command-line interface for conversing with AI agents
 - Leverages extracted memories for context-aware responses
 - Demonstrates end-to-end memory retrieval and usage
@@ -74,6 +108,22 @@ demo/
 - **`extract/`** - Memory extraction implementation (extractor, validator)
 
 ## 🚀 Quick Start
+
+### Option A: Super Simple Mode (Recommended for Beginners) ⭐
+
+Run `simple_demo.py` directly for a quick experience:
+
+```bash
+uv run python src/bootstrap.py demo/simple_demo.py
+```
+
+Wait about 10 seconds to see memory addition and search results!
+
+**Note**: First run requires ~10 seconds for data to be written to MongoDB, Elasticsearch, and Milvus.
+
+---
+
+### Option B: Full Feature Mode
 
 ### Step 1: Configure Language and Scenario
 

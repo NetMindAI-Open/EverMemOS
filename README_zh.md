@@ -155,12 +155,6 @@ EverMemOS 围绕两条主线运行：**记忆构筑**与**记忆感知**。它�
 
 #### 🎯 智能检索工具
 
-- **🔎 关键词检索 (BM25)**  
-  基于词频与逆文档频率的精确匹配
-  
-- **🧭 语义检索 (MaxSim)**  
-  原子事实级别的语义相似度匹配  
-
 - **🧪 混合检索 (RRF 融合)**  
   并行执行语义与关键词检索，采用 Reciprocal Rank Fusion 算法无缝融合
 
@@ -171,9 +165,8 @@ EverMemOS 围绕两条主线运行：**记忆构筑**与**记忆感知**。它�
 #### 🤖 Agentic 智能检索
 
 - **🎓 LLM 引导的多轮召回**  
-  - **Round 1**：混合检索筛选 → Rerank精选 → LLM 判断充分性
-  - **Round 2**：对于不充分的情况，生成 2-3 个互补查询，并行检索并融合
-  - 自动识别缺失信息，主动补足检索盲区
+  对于不充分的情况，生成 2-3 个互补查询，并行检索并融合
+  自动识别缺失信息，主动补足检索盲区
 
 - **🔀 多查询并行策略**  
   当单一查询无法完整表达意图时，生成多个互补视角的查询  
@@ -230,37 +223,57 @@ memsys-opensource/
 
 - Python 3.10+
 - uv
-- [MongoDB Installation Guide](docs/usage/MONGODB_GUIDE_zh.md), Redis, Elasticsearch, Milvus (可选)
+- Docker 和 Docker Compose
 
 ### 安装步骤
 
+#### 使用 Docker 启动依赖服务 ⭐
+
+使用 Docker Compose 一键启动所有依赖服务（MongoDB、Elasticsearch、Milvus、Redis）：
 
 ```bash
 # 1. 克隆项目
 git clone https://github.com/your-org/memsys_opensource.git
 cd memsys_opensource
 
-# 2. 安装 uv（如果还没有安装）
+# 2. 启动 Docker 服务
+docker-compose up -d
+
+# 3. 验证服务状态
+docker-compose ps
+
+# 4. 安装 uv（如果还没有安装）
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# 3. 安装项目依赖
+# 5. 安装项目依赖
 uv sync
 
-# 4. 配置环境变量
+# 6. 配置环境变量
 cp env.template .env
-
 # 编辑 .env 文件，填入必要的配置
-#   - LLM_API_KEY: 默认使用 OpenRouter，请填入您的 OpenRouter API Key。
-#   - DEEPINFRA_API_KEY: 填入您的 DeepInfra API Key，用于 Embedding 和 Rerank 服务。
-#   - 其他数据库 (MongoDB/Redis/ES/Milvus) 根据您的本地或远程部署情况进行配置。
-
+#   - LLM_API_KEY: 填入您的 LLM API Key（用于记忆提取）
+#   - DEEPINFRA_API_KEY: 填入您的 DeepInfra API Key（用于 Embedding 和 Rerank）
 ```
+
+**Docker 服务说明**：
+- **MongoDB** (27017): 主数据库，存储记忆单元和画像
+- **Elasticsearch** (19200): 关键词检索引擎（BM25）
+- **Milvus** (19530): 向量数据库，语义检索
+- **Redis** (6479): 缓存服务
+
+> 💡 详细的 Docker 配置和管理，请参考 [Docker 部署指南](DOCKER_DEPLOYMENT.md)
+
+> 📖 MongoDB 详细安装指南：[MongoDB Installation Guide](docs/usage/MONGODB_GUIDE_zh.md)
 
 ---
 
 #### 🎯 运行演示：记忆提取和交互式聊天
 
 演示部分展示了 EverMemOS 的端到端功能。
+
+> 💡 **快速体验**：直接运行 `uv run python src/bootstrap.py demo/simple_demo.py` 快速体验记忆存储和检索功能！
+
+我们还设置了完整的体验场景：
 
 **步骤 1: 提取记忆**
 

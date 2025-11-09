@@ -50,13 +50,47 @@ demo/
 
 ## 🎯 核心脚本
 
-### 1. `extract_memory.py` - 记忆提取
+### 1. `simple_demo.py` - 快速入门示例 ⭐
+- **最简单的使用方式**，只需几行代码
+- 演示如何添加和搜索记忆
+- 适合快速了解 MemSys 核心功能
+- **依赖**: `simple_memory_manager.py`
+
+```python
+from demo.simple_memory_manager import SimpleMemoryManager
+
+# 创建管理器
+memory = SimpleMemoryManager()
+
+# 添加记忆
+await memory.add_memory(
+    messages=[
+        {"role": "user", "content": "我喜欢踢足球"},
+        {"role": "assistant", "content": "足球是很好的运动！"},
+    ],
+    group_id="sports_chat"
+)
+
+# 搜索记忆
+results = await memory.search_memory(
+    query="用户喜欢什么运动？",
+    group_id="sports_chat"
+)
+print(results)  # ["我喜欢踢足球", ...]
+```
+
+**运行方式**：
+```bash
+uv run python src/bootstrap.py demo/simple_demo.py
+```
+
+### 2. `extract_memory.py` - 记忆提取
 - 处理 `data/` 目录中的对话文件
 - 提取记忆单元（MemCells）并生成用户画像
 - 将结果保存到配置的数据库（MongoDB）和本地输出
 - **依赖**: `extract/` 模块, `memory_config.py`, `memory_utils.py`
 
-### 2. `chat_with_memory.py` - 记忆增强对话
+### 3. `chat_with_memory.py` - 记忆增强对话
 - 用于与 AI 智能体对话的命令行界面
 - 利用提取的记忆进行上下文感知的回应
 - 演示端到端的记忆检索和使用
@@ -74,6 +108,22 @@ demo/
 - **`extract/`** - 记忆提取实现（提取器、验证器）
 
 ## 🚀 快速开始
+
+### 方式 A：超级简单模式（推荐新手）⭐
+
+直接运行 `simple_demo.py` 快速体验：
+
+```bash
+uv run python src/bootstrap.py demo/simple_demo.py
+```
+
+等待 10 秒后即可看到记忆添加和搜索的结果！
+
+**注意**：首次运行需要等待约 10 秒，让数据写入 MongoDB、Elasticsearch 和 Milvus。
+
+---
+
+### 方式 B：完整功能模式
 
 ### 步骤 1：配置语言和场景
 

@@ -155,12 +155,6 @@ Memory perception layer: quickly recalls relevant memories through multi-round r
 
 #### 🎯 Intelligent Retrieval Tools
 
-- **🔎 Keyword Retrieval (BM25)**  
-  Precision matching based on term frequency and inverse document frequency
-  
-- **🧭 Semantic Retrieval (MaxSim)**  
-  Atomic fact-level semantic similarity matching  
-
 - **🧪 Hybrid Retrieval (RRF Fusion)**  
   Parallel execution of semantic and keyword retrieval, seamlessly fused using Reciprocal Rank Fusion algorithm
 
@@ -171,9 +165,8 @@ Memory perception layer: quickly recalls relevant memories through multi-round r
 #### 🤖 Agentic Intelligent Retrieval
 
 - **🎓 LLM-Guided Multi-Round Recall**  
-  - **Round 1**: Hybrid retrieval filtering → Rerank refinement → LLM sufficiency judgment
-  - **Round 2**: For insufficient cases, generate 2-3 complementary queries, retrieve and fuse in parallel
-  - Automatically identifies missing information, proactively filling retrieval blind spots
+  For insufficient cases, generate 2-3 complementary queries, retrieve and fuse in parallel
+  Automatically identifies missing information, proactively filling retrieval blind spots
 
 - **🔀 Multi-Query Parallel Strategy**  
   When a single query cannot fully express intent, generate multiple complementary perspective queries  
@@ -229,30 +222,49 @@ memsys-opensource/
 
 - Python 3.10+
 - uv (recommended package manager)
-- [MongoDB Installation Guide](docs/usage/MONGODB_GUIDE.md), Redis, Elasticsearch, Milvus (optional)
+- Docker and Docker Compose
 
 ### Installation
+
+#### Using Docker for Dependency Services ⭐
+
+Use Docker Compose to start all dependency services (MongoDB, Elasticsearch, Milvus, Redis) with one command:
 
 ```bash
 # 1. Clone the repository
 git clone https://github.com/your-org/memsys_opensource.git
 cd memsys_opensource
 
-# 2. Install uv (if not already installed)
+# 2. Start Docker services
+docker-compose up -d
+
+# 3. Verify service status
+docker-compose ps
+
+# 4. Install uv (if not already installed)
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# 3. Install project dependencies
+# 5. Install project dependencies
 uv sync
 
-# 4. Configure environment variables
+# 6. Configure environment variables
 cp env.template .env
 # Edit the .env file and fill in the necessary configurations:
-#   - LLM_API_KEY: Defaults to OpenRouter. Please enter your OpenRouter API Key.
-#   - DEEPINFRA_API_KEY: Enter your DeepInfra API Key for Embedding and Rerank services.
-#   - Other databases (MongoDB/Redis/ES/Milvus) should be configured according to your local or remote deployment.
-
+#   - LLM_API_KEY: Enter your LLM API Key (for memory extraction)
+#   - DEEPINFRA_API_KEY: Enter your DeepInfra API Key (for Embedding and Rerank)
 ```
 
+**Docker Services**:
+- **MongoDB** (27017): Primary database for storing memory cells and profiles
+- **Elasticsearch** (19200): Keyword search engine (BM25)
+- **Milvus** (19530): Vector database for semantic retrieval
+- **Redis** (6479): Cache service
+
+> 💡 For detailed Docker configuration and management, see [Docker Deployment Guide](DOCKER_DEPLOYMENT.md)
+
+> 📖 MongoDB detailed installation guide: [MongoDB Installation Guide](docs/usage/MONGODB_GUIDE.md)
+
+---
 
 ### How to Use
 
@@ -263,6 +275,8 @@ EverMemOS offers multiple usage methods. Choose the one that best suits your nee
 #### 🎯 Run Demo: Memory Extraction and Interactive Chat
 
 The demo showcases the end-to-end functionality of EverMemOS.
+
+> 💡 **Quick Experience**: Run `uv run python src/bootstrap.py demo/simple_demo.py` to quickly experience memory storage and retrieval!
 
 **Step 1: Extract Memories**
 
