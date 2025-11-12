@@ -10,7 +10,6 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from core.observation.logger import get_logger
 
-# from core.middleware.database_session_middleware import DatabaseSessionMiddleware
 from core.middleware.global_exception_handler import global_exception_handler
 from core.di.utils import get_bean_by_type
 from component.database_connection_provider import DatabaseConnectionProvider
@@ -92,6 +91,7 @@ def create_base_app(
 
     # 添加基础中间件
     # middleware 的顺序很重要，先添加的后执行
+    # from core.middleware.database_session_middleware import DatabaseSessionMiddleware
     # app.add_middleware(DatabaseSessionMiddleware)
 
     # 挂载lifespan管理方法到app实例
