@@ -21,7 +21,9 @@ import sys
 import asyncio
 import time
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Optional
+
+ALLOWED_SCENES: tuple[str, str] = ("assistant", "group_chat")
 
 from infra_layer.adapters.input.api.mapper.group_chat_converter import (
     convert_group_chat_format_to_memorize_input,
@@ -35,16 +37,18 @@ logger = get_logger(__name__)
 class GroupChatMemorizer:
     """群聊记忆存储处理类"""
 
-    def __init__(self, api_url: str, use_v2: bool = False):
+    def __init__(self, api_url: str, use_v2: bool = False, scene: Optional[str] = None):
         """
         初始化
 
         Args:
             api_url: memorize API地址（必需）
             use_v2: 是否使用 v2 接口（默认使用 v3 接口）
+            scene: 记忆提取场景，可选
         """
         self.api_url = api_url
         self.use_v2 = use_v2
+        self.scene = scene
 
     def validate_input_file(self, file_path: str) -> bool:
         """
@@ -155,6 +159,9 @@ class GroupChatMemorizer:
                         request_data["group_id"] = group_id
                     if group_name:
                         request_data["group_name"] = group_name
+                    scene = message.get("scene") or self.scene
+                    if scene:
+                        request_data["scene"] = scene
 
                     # 发送请求
                     try:
@@ -241,10 +248,14 @@ class GroupChatMemorizer:
                 for i, message in enumerate(messages):
                     logger.info(f"\n--- 处理第 {i+1}/{len(messages)} 条消息 ---")
 
+                    message_to_send = message
+                    if self.scene and not message.get("scene"):
+                        message_to_send = {**message, "scene": self.scene}
+
                     # 每次只传当前消息，不传历史
                     # 使用 split_ratio=0 表示全部作为新消息
                     request_data = {
-                        "messages": [message],
+                        "messages": [message_to_send],
                         "raw_data_type": raw_data_type,
                         "split_ratio": 0,
                     }
@@ -255,8 +266,8 @@ class GroupChatMemorizer:
                         request_data["group_name"] = group_name
 
                     # 设置 current_time（使用当前消息的时间戳）
-                    if message.get('timestamp'):
-                        request_data["current_time"] = message['timestamp']
+                    if message_to_send.get('timestamp'):
+                        request_data["current_time"] = message_to_send['timestamp']
 
                     # 发送请求
                     try:
@@ -419,6 +430,13 @@ async def async_main():
     parser.add_argument(
         '--validate-only', action='store_true', help='仅验证输入文件格式，不执行存储'
     )
+    parser.add_argument(
+        '--scene',
+        type=str,
+        choices=ALLOWED_SCENES,
+        required=True,
+        help='记忆提取场景（必填，仅支持 assistant 或 group_chat）',
+    )
 
     args = parser.parse_args()
 
@@ -444,12 +462,16 @@ async def async_main():
         else:
             interface_mode = "V3 (推荐，简单直接格式)"
         logger.info(f"📡 接口模式: {interface_mode}")
+    if args.scene:
+        logger.info(f"🎯 场景: {args.scene}")
     logger.info("=" * 70)
 
     # 如果只是验证模式，验证后退出
     if args.validate_only:
         # 验证模式不需要 API 地址
-        memorizer = GroupChatMemorizer(api_url="", use_v2=False)  # 传入空字符串占位
+        memorizer = GroupChatMemorizer(
+            api_url="", use_v2=False, scene=args.scene
+        )  # 传入空字符串占位
         success = memorizer.validate_input_file(str(input_file))
         if success:
             logger.info("\n✓ 验证完成，文件格式正确！")
@@ -472,7 +494,9 @@ async def async_main():
         sys.exit(1)
 
     # 创建处理器并处理文件
-    memorizer = GroupChatMemorizer(api_url=args.api_url, use_v2=args.use_v2)
+    memorizer = GroupChatMemorizer(
+        api_url=args.api_url, use_v2=args.use_v2, scene=args.scene
+    )
     success = await memorizer.process_file(str(input_file))
 
     if success:
