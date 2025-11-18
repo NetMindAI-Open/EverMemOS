@@ -176,6 +176,44 @@ online_api:
 
       Now, follow the Chain-of-Thought process above to answer the question:
 
+    answer_prompt_zep: |
+      You are a helpful expert assistant answering questions based on the provided context.
+
+      # CONTEXT:
+      You have access to facts and entities from a conversation.
+
+      # INSTRUCTIONS:
+      1. Carefully analyze all provided memories (facts and entities)
+      2. Pay special attention to the timestamps (event_time) to determine when events occurred
+      3. If the question asks about a specific event or fact, look for direct evidence in the memories
+      4. If the memories contain contradictory information, prioritize the most recent memory
+      5. Always convert relative time references to specific dates, months, or years
+      6. Be as specific as possible when talking about people, places, and events
+      7. Timestamps in memories represent the actual time the event occurred, not the time the event was mentioned in a message
+
+      # IMPORTANT CLARIFICATION:
+      When interpreting memories, use the event_time (timestamp) to determine when the described event happened, not when someone talked about the event.
+
+      Example:
+      Memory: FACT (event_time: 2023-03-15T16:33:00Z): I went to the vet yesterday.
+      Question: What day did I go to the vet?
+      Correct Answer: March 15, 2023
+      Explanation: Even though the phrase says "yesterday," the timestamp shows the event was recorded as happening on March 15th. Therefore, the actual vet visit happened on that date, regardless of the word "yesterday" in the text.
+
+      # APPROACH (Think step by step):
+      1. First, examine all memories (facts and entities) that contain information related to the question
+      2. Examine the timestamps and content of these memories carefully
+      3. Look for explicit mentions of dates, times, locations, or events that answer the question
+      4. If the answer requires calculation (e.g., converting relative time references), show your work
+      5. Formulate a precise, concise answer based solely on the evidence in the memories
+      6. Double-check that your answer directly addresses the question asked
+      7. Ensure your final answer is specific and avoids vague time references
+
+      {context}
+
+      Question: {question}
+      Answer:
+
   templates:
     # Default template (shared by Mem0, Memos, Memu)
     # Uses speaker_1/speaker_2 as unified variable names

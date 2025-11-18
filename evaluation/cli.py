@@ -99,6 +99,18 @@ async def main():
         help="Smoke test: number of questions to test (use 0 for all). Default: 3"
     )
     parser.add_argument(
+        "--from-conv",
+        type=int,
+        default=0,
+        help="Starting conversation index to process (inclusive, 0-based). Default: 0"
+    )
+    parser.add_argument(
+        "--to-conv",
+        type=int,
+        default=None,
+        help="Ending conversation index to process (exclusive). Default: None (process all remaining)"
+    )
+    parser.add_argument(
         "--run-name",
         type=str,
         default=None,
@@ -164,8 +176,13 @@ async def main():
             console.print(f"[red]❌ Data not found in evaluation/data/ or project root data/[/red]")
             return
     
+    # Get max_content_length from dataset config (if specified)
+    max_content_length = dataset_config.get("data", {}).get("max_content_length", None)
+    if max_content_length:
+        console.print(f"  ⚠️  Max content length: {max_content_length} characters")
+    
     # Smart load with auto conversion
-    dataset = load_dataset(args.dataset, str(data_path))
+    dataset = load_dataset(args.dataset, str(data_path), max_content_length=max_content_length)
     
     console.print(f"  ✅ Loaded {len(dataset.conversations)} conversations, {len(dataset.qa_pairs)} QA pairs")
     
@@ -181,6 +198,10 @@ async def main():
     
     # Create components
     console.print(f"\n[bold cyan]Initializing components...[/bold cyan]")
+    
+    # Add dataset_name to system_config for adapter initialization
+    # (Used to determine num_workers based on adapter + dataset combination)
+    system_config["dataset_name"] = args.dataset
     
     # Create adapter (pass output_dir for persistence)
     adapter = create_adapter(
@@ -233,6 +254,8 @@ async def main():
             smoke_test=args.smoke,
             smoke_messages=args.smoke_messages,
             smoke_questions=args.smoke_questions,
+            from_conv=args.from_conv,
+            to_conv=args.to_conv,
         )
         
         console.print(f"\n[bold green]✨ Evaluation completed![/bold green]")
@@ -240,6 +263,15 @@ async def main():
     
     finally:
         # Cleanup resources
+        # Clean up adapter session (e.g., aiohttp.ClientSession)
+        if hasattr(adapter, 'close') and callable(getattr(adapter, 'close')):
+            try:
+                await adapter.close()
+                console.print("[dim]🧹 Cleaned up adapter resources[/dim]")
+            except Exception as e:
+                # Cleanup failure doesn't affect main process
+                console.print(f"[dim]⚠️  Failed to cleanup adapter resources: {e}[/dim]")
+        
         # Only systems using rerank need cleanup
         systems_need_rerank = ["evermemos"]
         if args.system in systems_need_rerank:
@@ -251,7 +283,7 @@ async def main():
                     console.print("[dim]🧹 Cleaned up rerank service resources[/dim]")
             except Exception as e:
                 # Cleanup failure doesn't affect main process
-                console.print(f"[dim]⚠️  Failed to cleanup resources: {e}[/dim]")
+                console.print(f"[dim]⚠️  Failed to cleanup rerank resources: {e}[/dim]")
 
 
 if __name__ == "__main__":

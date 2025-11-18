@@ -1609,6 +1609,7 @@ evaluation-full = [
     { name = "mem0ai" },
     { name = "requests" },
     { name = "rich" },
+    { name = "zep-cloud" },
 ]
 gpu = [
     { name = "faiss-cpu" },
@@ -1710,6 +1711,7 @@ evaluation-full = [
     { name = "mem0ai", specifier = ">=1.0.0" },
     { name = "requests", specifier = ">=2.31.0" },
     { name = "rich", specifier = ">=13.0.0" },
+    { name = "zep-cloud", specifier = ">=2.0.0" },
 ]
 gpu = [{ name = "faiss-cpu", specifier = ">=1.7.0" }]
 prod = [{ name = "faiss-cpu", specifier = ">=1.7.0" }]
@@ -3365,6 +3367,23 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/35/99/9918c8739ba271dcd935400cff8b32e3cd319eaf02fcd023d5dcd487a7c8/yarl-1.20.1-cp312-cp312-win32.whl", hash = "sha256:daea0d313868da1cf2fac6b2d3a25c6e3a9e879483244be38c8e6a41f1d876a5", size = 81249, upload-time = "2025-06-10T00:44:14.731Z" },
     { url = "https://files.pythonhosted.org/packages/eb/83/5d9092950565481b413b31a23e75dd3418ff0a277d6e0abf3729d4d1ce25/yarl-1.20.1-cp312-cp312-win_amd64.whl", hash = "sha256:48ea7d7f9be0487339828a4de0360d7ce0efc06524a48e1810f945c45b813698", size = 86710, upload-time = "2025-06-10T00:44:16.716Z" },
     { url = "https://files.pythonhosted.org/packages/b4/2d/2345fce04cfd4bee161bf1e7d9cdc702e3e16109021035dbb24db654a622/yarl-1.20.1-py3-none-any.whl", hash = "sha256:83b8eb083fe4683c6115795d9fc1cfaf2cbbefb19b3a1cb68f6527460f483a77", size = 46542, upload-time = "2025-06-10T00:46:07.521Z" },
+]
+
+[[package]]
+name = "zep-cloud"
+version = "3.10.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "httpx" },
+    { name = "openai" },
+    { name = "pydantic" },
+    { name = "pydantic-core" },
+    { name = "python-dateutil" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/24/60/25df1376703c4b0da7959e3d16d739f3819252a266d6a47daca05f4ff86b/zep_cloud-3.10.0.tar.gz", hash = "sha256:7ed32d55718d59cb2165475351831ea18b9bf15d4716c09251b6ecaed49230e4", size = 59127, upload-time = "2025-11-06T19:48:25.455Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f9/c6/38c98bf94da78612c7f638ff9472fca652de1806836c9b6be1b033dadd90/zep_cloud-3.10.0-py3-none-any.whl", hash = "sha256:459dfa9227d4939c56e3b36a20fcc2f3c16d27cfe7aa5facb7d044e17d772cf0", size = 101620, upload-time = "2025-11-06T19:48:23.789Z" },
 ]
 
 [[package]]

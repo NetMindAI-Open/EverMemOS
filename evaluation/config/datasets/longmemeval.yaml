@@ -12,6 +12,9 @@ data:
   # Converter will look for:
   # - longmemeval/longmemeval_s_cleaned.json (raw)
   # - longmemeval/longmemeval_s_locomo_style.json (converted, auto-generated)
+  
+  # Content length limit (for very long messages)
+  max_content_length: 8000  # Truncate messages longer than this (characters)
 
 # Evaluation configuration
 evaluation:

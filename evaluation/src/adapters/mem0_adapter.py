@@ -6,8 +6,8 @@ Key features:
 - Dual-perspective handling: separate storage and retrieval for speaker_a and speaker_b
 - Supports custom instructions
 """
+import asyncio
 import json
-import time
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any, Dict, List
@@ -39,24 +39,26 @@ class Mem0Adapter(OnlineAPIAdapter):
     def __init__(self, config: dict, output_dir: Path = None):
         super().__init__(config, output_dir)
         
-        # Import Mem0 client
+        # Import Mem0 async client
         try:
-            from mem0 import MemoryClient
+            from mem0 import AsyncMemoryClient
         except ImportError:
             raise ImportError(
                 "Mem0 client not installed. "
                 "Please install: pip install mem0ai"
             )
         
-        # Initialize Mem0 client
+        # Initialize Mem0 async client
         api_key = config.get("api_key", "")
         if not api_key:
             raise ValueError("Mem0 API key is required. Set 'api_key' in config.")
         
-        self.client = MemoryClient(api_key=api_key)
+        self.client = AsyncMemoryClient(api_key=api_key)
         self.batch_size = config.get("batch_size", 2)
         self.max_retries = config.get("max_retries", 5)
-        self.max_content_length = config.get("max_content_length", 8000)
+        self.max_content_length = config.get("max_content_length", 12000)
+        self.add_interval = config.get("add_interval", 0.0)
+        self.search_interval = config.get("search", {}).get("search_interval", 0.0)
         self.console = Console()
         
         # Set custom instructions (loaded from prompts.yaml)
@@ -67,15 +69,15 @@ class Mem0Adapter(OnlineAPIAdapter):
             custom_instructions = self._prompts.get("add_stage", {}).get("mem0", {}).get("custom_instructions", None)
             print(f"   ✅ Custom instructions set (from prompts.yaml)")
         
-        if custom_instructions:
-            try:
-                self.client.update_project(custom_instructions=custom_instructions)
-                print(f"   ✅ Custom instructions set (from prompts.yaml)")
-            except Exception as e:
-                print(f"   ⚠️  Failed to set custom instructions: {e}")
+        # Store custom_instructions for async initialization
+        self._custom_instructions = custom_instructions
         
         print(f"   Batch Size: {self.batch_size}")
         print(f"   Max Content Length: {self.max_content_length}")
+        if self.add_interval > 0:
+            print(f"   Add Interval: {self.add_interval}s (rate limiting)")
+        if self.search_interval > 0:
+            print(f"   Search Interval: {self.search_interval}s (rate limiting)")
     
     def _convert_timestamp_to_display_timezone(self, timestamp_str: str) -> str:
         """
@@ -118,6 +120,16 @@ class Mem0Adapter(OnlineAPIAdapter):
             conversations: Standard format conversation list
             **kwargs: Extra parameters
         """
+        # Update project with custom instructions (if set)
+        if self._custom_instructions:
+            try:
+                await self.client.update_project(
+                    custom_instructions=self._custom_instructions
+                )
+                self.console.print("   ✅ Custom instructions set", style="green")
+            except Exception as e:
+                self.console.print(f"   ⚠️  Failed to set custom instructions: {e}", style="yellow")
+        
         # Check if need to clean existing data
         clean_before_add = self.config.get("clean_before_add", False)
         
@@ -152,7 +164,8 @@ class Mem0Adapter(OnlineAPIAdapter):
         
         for user_id in user_ids_to_clean:
             try:
-                self.client.delete_all(user_id=user_id)
+                # Use async client for delete operation
+                await self.client.delete_all(user_id=user_id)
                 cleaned_count += 1
                 self.console.print(f"   ✅ Cleaned: {user_id}", style="green")
             except Exception as e:
@@ -164,284 +177,114 @@ class Mem0Adapter(OnlineAPIAdapter):
             style="bold green"
         )
     
-    def _need_dual_perspective(self, speaker_a: str, speaker_b: str) -> bool:
-        """
-        Determine if dual-perspective handling is needed.
-        
-        Single perspective (no dual-perspective needed):
-        - Standard roles: "user"/"assistant"
-        - Case variants: "User"/"Assistant"
-        - With suffix: "user_123"/"assistant_456"
-        
-        Dual perspective (dual-perspective needed):
-        - Custom names: "Elena Rodriguez"/"Alex"
-        """
-        def is_standard_role(speaker: str) -> bool:
-            speaker = speaker.lower()
-            # Exact match
-            if speaker in ["user", "assistant"]:
-                return True
-            # Starts with user or assistant
-            if speaker.startswith("user") or speaker.startswith("assistant"):
-                return True
-            return False
-        
-        # Only need dual perspective when both speakers are not standard roles
-        return not (is_standard_role(speaker_a) or is_standard_role(speaker_b))
-    
-    async def add(
+    async def _add_user_messages(
         self, 
-        conversations: List[Conversation],
+        conv: Conversation,
+        messages: List[Dict[str, Any]],
+        speaker: str,
         **kwargs
-    ) -> Dict[str, Any]:
+    ) -> Any:
         """
-        Ingest conversations into Mem0.
-        
-        Key features:
-        - Supports single and dual perspective handling
-        - Single perspective: standard user/assistant data
-        - Dual perspective: custom speaker names, stores memories separately for each speaker
-        
-        Mem0 API specifics:
-        - Requires user_id to distinguish different users
-        - Supports batch addition (recommended batch_size=2)
-        - Supports graph memory (optional)
-        - Requires timestamp (Unix timestamp)
-        """
-        self.console.print(f"\n{'='*60}", style="bold cyan")
-        self.console.print(f"Stage 1: Adding to Mem0 (Dual Perspective)", style="bold cyan")
-        self.console.print(f"{'='*60}", style="bold cyan")
-        
-        conversation_ids = []
-        
-        for conv in conversations:
-            conv_id = conv.conversation_id
-            conversation_ids.append(conv_id)
-            
-            # Get speaker information
-            speaker_a = conv.metadata.get("speaker_a", "")
-            speaker_b = conv.metadata.get("speaker_b", "")
-            
-            # Get user_id (extracted from metadata, already set during data loading)
-            speaker_a_user_id = self._extract_user_id(conv, speaker="speaker_a")
-            speaker_b_user_id = self._extract_user_id(conv, speaker="speaker_b")
-            
-            # Detect if dual perspective handling is needed
-            need_dual_perspective = self._need_dual_perspective(speaker_a, speaker_b)
-            
-            # Get timestamp (using first message's time)
-            timestamp = None
-            is_fake_timestamp = False
-            if conv.messages and conv.messages[0].timestamp:
-                timestamp = int(conv.messages[0].timestamp.timestamp()) 
-                is_fake_timestamp = conv.messages[0].metadata.get("is_fake_timestamp", False)
-            
-            self.console.print(f"\n📥 Adding conversation: {conv_id}", style="cyan")
-            if is_fake_timestamp:
-                self.console.print(f"   ⚠️  Using fake timestamp (original data has no timestamp)", style="yellow")
-            
-            if need_dual_perspective:
-                # Dual perspective handling (LoCoMo style data)
-                self.console.print(f"   Mode: Dual Perspective", style="dim")
-                await self._add_dual_perspective(conv, speaker_a, speaker_b, speaker_a_user_id, speaker_b_user_id, timestamp)
-            else:
-                # Single perspective handling (standard user/assistant data)
-                self.console.print(f"   Mode: Single Perspective", style="dim")
-                await self._add_single_perspective(conv, speaker_a_user_id, timestamp)
-            
-            self.console.print(f"   ✅ Added successfully", style="green")
-        
-        self.console.print(f"\n✅ All conversations added to Mem0", style="bold green")
-        
-        # Return metadata (online API doesn't need local index)
-        return {
-            "type": "online_api",
-            "system": "mem0",
-            "conversation_ids": conversation_ids,
-        }
-    
-    async def _add_single_perspective(self, conv: Conversation, user_id: str, timestamp: int):
-        """Single perspective addition (for standard user/assistant data)."""
-        messages = []
-        truncated_count = 0
-        
-        for msg in conv.messages:
-            # Standard format: directly use speaker_name: content
-            content = f"{msg.speaker_name}: {msg.content}"
-            
-            # Truncate overly long content (Mem0 API limit)
-            if len(content) > self.max_content_length:
-                content = content[:self.max_content_length]
-                truncated_count += 1
-            
-            # Determine role (user or assistant)
-            role = "user" if msg.speaker_name.lower().startswith("user") else "assistant"
-            messages.append({"role": role, "content": content})
-        
-        self.console.print(f"   User ID: {user_id}", style="dim")
-        self.console.print(f"   Messages: {len(messages)}", style="dim")
-        if truncated_count > 0:
-            self.console.print(f"   ⚠️  Truncated {truncated_count} messages (>{self.max_content_length} chars)", style="yellow")
-        
-        await self._add_messages_for_user(messages, user_id, timestamp, "Single User")
-    
-    async def _add_dual_perspective(
-        self, 
-        conv: Conversation, 
-        speaker_a: str, 
-        speaker_b: str,
-        speaker_a_user_id: str,
-        speaker_b_user_id: str,
-        timestamp: int
-    ):
-        """Dual perspective addition (for data with custom speaker names)."""
-        # Construct message lists for both perspectives separately
-        speaker_a_messages = []
-        speaker_b_messages = []
-        truncated_count = 0
-        
-        for msg in conv.messages:
-            # Format: speaker_name: content
-            content = f"{msg.speaker_name}: {msg.content}"
-            
-            # Truncate overly long content (Mem0 API limit)
-            if len(content) > self.max_content_length:
-                content = content[:self.max_content_length]
-                truncated_count += 1
-            
-            if msg.speaker_name == speaker_a:
-                # What speaker_a said
-                speaker_a_messages.append({"role": "user", "content": content})
-                speaker_b_messages.append({"role": "assistant", "content": content})
-            elif msg.speaker_name == speaker_b:
-                # What speaker_b said
-                speaker_a_messages.append({"role": "assistant", "content": content})
-                speaker_b_messages.append({"role": "user", "content": content})
-        
-        self.console.print(f"   Speaker A: {speaker_a} (user_id: {speaker_a_user_id})", style="dim")
-        self.console.print(f"   Speaker A Messages: {len(speaker_a_messages)}", style="dim")
-        self.console.print(f"   Speaker B: {speaker_b} (user_id: {speaker_b_user_id})", style="dim")
-        self.console.print(f"   Speaker B Messages: {len(speaker_b_messages)}", style="dim")
-        if truncated_count > 0:
-            self.console.print(f"   ⚠️  Truncated {truncated_count} messages (>{self.max_content_length} chars)", style="yellow")
-        
-        # Add messages for both user_ids separately
-        await self._add_messages_for_user(
-            speaker_a_messages, 
-            speaker_a_user_id, 
-            timestamp, 
-            f"Speaker A ({speaker_a})"
-        )
-        await self._add_messages_for_user(
-            speaker_b_messages, 
-            speaker_b_user_id, 
-            timestamp, 
-            f"Speaker B ({speaker_b})"
-        )
-    
-    async def _add_messages_for_user(
-        self, 
-        messages: List[Dict], 
-        user_id: str, 
-        timestamp: int,
-        description: str
-    ):
-        """
-        Add messages for a single user (with batching and retry).
+        Add messages for a single user to Mem0.
         
         Args:
-            messages: Message list
-            user_id: User ID
-            timestamp: Unix timestamp
-            description: Description (for logging)
+            conv: Original conversation object
+            messages: Formatted message list
+            speaker: "speaker_a" or "speaker_b"
+            **kwargs: Extra parameters
+        
+        Returns:
+            None
         """
+        # Extract user_id
+        user_id = self._extract_user_id(conv, speaker=speaker)
+        
+        # Handle content truncation (Mem0 specific)
+        truncated_count = 0
+        for msg in messages:
+            if len(msg["content"]) > self.max_content_length:
+                msg["content"] = msg["content"][:self.max_content_length]
+                truncated_count += 1
+            
+        # Log info
+        speaker_name = conv.metadata.get(speaker, speaker)
+        is_fake_timestamp = conv.messages[0].metadata.get("is_fake_timestamp", False) if conv.messages else False
+        
+        self.console.print(f"   📤 Adding for {speaker_name} ({user_id}): {len(messages)} messages", style="dim")
+        if is_fake_timestamp:
+            self.console.print(f"   ⚠️  Using fake timestamp", style="yellow")
+        if truncated_count > 0:
+            self.console.print(f"   ⚠️  Truncated {truncated_count} messages (>{self.max_content_length} chars)", style="yellow")
+        
+        # Add messages in batches with retry
+        # Note: messages list corresponds to conv.messages in order
         for i in range(0, len(messages), self.batch_size):
             batch_messages = messages[i : i + self.batch_size]
             
-            # Retry mechanism
+            # Use the timestamp of the first message in this batch
+            timestamp = None
+            if i < len(conv.messages) and conv.messages[i].timestamp:
+                timestamp = int(conv.messages[i].timestamp.timestamp())
+            
             for attempt in range(self.max_retries):
                 try:
-                    self.client.add(
+                    # Use async client for add operation
+                    await self.client.add(
                         messages=batch_messages,
                         timestamp=timestamp,
                         user_id=user_id,
                     )
+                    # Wait between add requests to avoid rate limits
+                    if self.add_interval > 0:
+                        await asyncio.sleep(self.add_interval)
                     break
                 except Exception as e:
                     if attempt < self.max_retries - 1:
                         self.console.print(
-                        f"   ⚠️  [{description}] Retry {attempt + 1}/{self.max_retries}: {e}", 
+                            f"   ⚠️  [{speaker_name} (user_id={user_id})] Retry {attempt + 1}/{self.max_retries}: {e}",
                             style="yellow"
                         )
-                        time.sleep(2 ** attempt)
+                        await asyncio.sleep(2 ** attempt)  # Use async sleep
                     else:
                         self.console.print(
-                            f"   ❌ [{description}] Failed after {self.max_retries} retries: {e}", 
+                            f"   ❌ [{speaker_name} (user_id={user_id})] Failed after {self.max_retries} retries: {e}",
                             style="red"
                         )
                         raise e
     
-    async def search(
+        return None
+    
+    async def _search_single_user(
         self, 
         query: str,
         conversation_id: str,
-        index: Any,
+        user_id: str,
+        top_k: int,
         **kwargs
-    ) -> SearchResult:
+    ) -> List[Dict[str, Any]]:
         """
-        Retrieve relevant memories from Mem0.
+        Search memories for a single user (Mem0-specific with timezone conversion).
         
-        Key features:
-        - Intelligently determine if dual perspective search is needed
-        - Single perspective: search one user_id
-        - Dual perspective: search both speaker_a and speaker_b simultaneously, merge results
+        Calls Mem0 search API and converts results to standard format,
+        applying timezone conversion to timestamps.
         
         Args:
             query: Query text
-            conversation_id: Conversation ID
-            index: Index metadata (contains conversation_ids)
-            **kwargs: Optional parameters, such as top_k, conversation (for rebuilding cache)
+            conversation_id: Conversation ID (not used by Mem0)
+            user_id: User ID to search for
+            top_k: Number of results to retrieve
+            **kwargs: Additional parameters
         
         Returns:
-            Standard format search result
+            List of search results with timezone-converted timestamps
         """
-        top_k = kwargs.get("top_k", 10)
-        
-        # Get conversation info directly from kwargs (don't use cache)
-        conversation = kwargs.get("conversation")
-        if conversation:
-            speaker_a = conversation.metadata.get("speaker_a", "")
-            speaker_b = conversation.metadata.get("speaker_b", "")
-            speaker_a_user_id = self._extract_user_id(conversation, speaker="speaker_a")
-            speaker_b_user_id = self._extract_user_id(conversation, speaker="speaker_b")
-            need_dual_perspective = self._need_dual_perspective(speaker_a, speaker_b)
-        else:
-            # Fallback: use default user_id
-            speaker_a_user_id = f"{conversation_id}_speaker_a"
-            speaker_b_user_id = f"{conversation_id}_speaker_b"
-            speaker_a = "speaker_a"
-            speaker_b = "speaker_b"
-            need_dual_perspective = False
-        
-        if need_dual_perspective:
-            # Dual perspective search: search from both speakers' perspectives separately
-            return await self._search_dual_perspective(
-                query, conversation_id, speaker_a, speaker_b, 
-                speaker_a_user_id, speaker_b_user_id, top_k
-            )
-        else:
-            # Single perspective search (standard user/assistant data)
-            return await self._search_single_perspective(
-                query, conversation_id, speaker_a_user_id, top_k
-            )
-    
-    async def _search_single_perspective(
-        self, query: str, conversation_id: str, user_id: str, top_k: int
-    ) -> SearchResult:
-        """Single perspective search (for standard user/assistant data)."""
+        # Add interval before search to avoid rate limiting (429 errors)
+        if self.search_interval > 0:
+            await asyncio.sleep(self.search_interval)
         
         try:
-            results = self.client.search(
+            # Use async client for search operation
+            raw_results = await self.client.search(
                 query=query,
                 top_k=top_k,
                 user_id=user_id,
@@ -449,44 +292,64 @@ class Mem0Adapter(OnlineAPIAdapter):
             )
             
             # Debug: print raw search results
-            self.console.print(f"\n[DEBUG] Mem0 Search Results (Single):", style="yellow")
+            self.console.print(f"\n[DEBUG] Mem0 Search Results:", style="yellow")
             self.console.print(f"  Query: {query}", style="dim")
             self.console.print(f"  User ID: {user_id}", style="dim")
-            self.console.print(f"  Results: {json.dumps(results, indent=2, ensure_ascii=False)}", style="dim")
+            self.console.print(f"  Results: {json.dumps(raw_results, indent=2, ensure_ascii=False)}", style="dim")
             
         except Exception as e:
             self.console.print(f"❌ Mem0 search error: {e}", style="red")
-            return SearchResult(
-                query=query,
-                conversation_id=conversation_id,
-                results=[],
-                retrieval_metadata={"error": str(e)}
-            )
+            return []
         
-        # Build detailed results list (add user_id to each memory)
-        memory_results = []
-        for memory in results.get("results", []):
-            # Convert timestamp to display timezone if configured
+        # Convert to standard format with timezone conversion
+        results = []
+        for memory in raw_results.get("results", []):
+            # Apply timezone conversion to timestamp
             created_at_original = memory.get("created_at", "")
             created_at_display = self._convert_timestamp_to_display_timezone(created_at_original)
             
-            memory_results.append({
-                "content": f"{created_at_display}: {memory['memory']}",
+            results.append({
+                "content": f"{created_at_display}: {memory['memory']}",  # Add timestamp prefix
                 "score": memory.get("score", 0.0),
                 "user_id": user_id,
                 "metadata": {
                     "id": memory.get("id", ""),
-                    "created_at": created_at_original,  # Keep original for reference
-                    "created_at_display": created_at_display,  # Add display version
+                    "created_at": created_at_original,
+                    "created_at_display": created_at_display,
                     "memory": memory.get("memory", ""),
                     "user_id": memory.get("user_id", ""),
                 }
             })
         
+        return results
+    
+    def _build_single_search_result(
+        self,
+        query: str,
+        conversation_id: str,
+        results: List[Dict[str, Any]],
+        user_id: str,
+        top_k: int,
+        **kwargs
+    ) -> SearchResult:
+        """
+        Build SearchResult for single perspective (Mem0: simple metadata).
+        
+        Args:
+            query: Query text
+            conversation_id: Conversation ID
+            results: Search results from _search_single_user
+            user_id: User ID
+            top_k: Number of results requested
+            **kwargs: Additional parameters
+        
+        Returns:
+            SearchResult (no formatted_context, uses fallback)
+        """
         return SearchResult(
             query=query,
             conversation_id=conversation_id,
-            results=memory_results,
+            results=results,
             retrieval_metadata={
                 "system": "mem0",
                 "top_k": top_k,
@@ -495,113 +358,54 @@ class Mem0Adapter(OnlineAPIAdapter):
             }
         )
     
-    async def _search_dual_perspective(
+    def _build_dual_search_result(
         self, 
         query: str, 
         conversation_id: str,
+        all_results: List[Dict[str, Any]],
+        results_a: List[Dict[str, Any]],
+        results_b: List[Dict[str, Any]],
         speaker_a: str,
         speaker_b: str,
         speaker_a_user_id: str,
         speaker_b_user_id: str,
-        top_k: int
+        top_k: int,
+        **kwargs
     ) -> SearchResult:
-        """Dual perspective search (for data with custom speaker names)."""
+        """
+        Build SearchResult for dual perspective (Mem0: use template).
         
-        # Dual perspective search: search both user_ids separately
-        try:
-            search_speaker_a_results = self.client.search(
-                query=query,
-                top_k=top_k,
-                user_id=speaker_a_user_id,
-                filters={"AND": [{"user_id": f"{speaker_a_user_id}"}]},
-            )
-            search_speaker_b_results = self.client.search(
-                query=query,
-                top_k=top_k,
-                user_id=speaker_b_user_id,
-                filters={"AND": [{"user_id": f"{speaker_b_user_id}"}]},
-            )
-            
-            # Debug: print raw search results
-            self.console.print(f"\n[DEBUG] Mem0 Search Results (Dual):", style="yellow")
-            self.console.print(f"  Query: {query}", style="dim")
-            self.console.print(f"  Speaker A ({speaker_a}, user_id={speaker_a_user_id}):", style="dim")
-            self.console.print(f"    {json.dumps(search_speaker_a_results, indent=2, ensure_ascii=False)}", style="dim")
-            self.console.print(f"  Speaker B ({speaker_b}, user_id={speaker_b_user_id}):", style="dim")
-            self.console.print(f"    {json.dumps(search_speaker_b_results, indent=2, ensure_ascii=False)}", style="dim")
-            
-        except Exception as e:
-            self.console.print(f"❌ Mem0 dual search error: {e}", style="red")
-            return SearchResult(
-                query=query,
-                conversation_id=conversation_id,
-                results=[],
-                retrieval_metadata={"error": str(e)}
-            )
+        Formats memories using the default template for dual-speaker scenarios.
         
-        # Build detailed results list (add user_id to each memory)
-        all_results = []
+        Args:
+            query: Query text
+            conversation_id: Conversation ID
+            all_results: Merged results (for fallback)
+            results_a: Speaker A's search results
+            results_b: Speaker B's search results
+            speaker_a: Speaker A name
+            speaker_b: Speaker B name
+            speaker_a_user_id: Speaker A user ID
+            speaker_b_user_id: Speaker B user ID
+            top_k: Number of results per user
+            **kwargs: Additional parameters
         
-        # Speaker A's memories
-        for memory in search_speaker_a_results.get("results", []):
-            created_at_original = memory.get("created_at", "")
-            created_at_display = self._convert_timestamp_to_display_timezone(created_at_original)
-            
-            all_results.append({
-                "content": f"{created_at_display}: {memory['memory']}",
-                "score": memory.get("score", 0.0),
-                "user_id": speaker_a_user_id,
-                "metadata": {
-                    "id": memory.get("id", ""),
-                    "created_at": created_at_original,
-                    "created_at_display": created_at_display,
-                    "memory": memory.get("memory", ""),
-                    "user_id": memory.get("user_id", ""),
-                }
-            })
+        Returns:
+            SearchResult with formatted_context
+        """
+        # Extract content from results (already includes timezone-converted timestamps)
+        speaker_a_memories_text = "\n".join([r["content"] for r in results_a]) if results_a else "(No memories found)"
+        speaker_b_memories_text = "\n".join([r["content"] for r in results_b]) if results_b else "(No memories found)"
         
-        # Speaker B's memories
-        for memory in search_speaker_b_results.get("results", []):
-            created_at_original = memory.get("created_at", "")
-            created_at_display = self._convert_timestamp_to_display_timezone(created_at_original)
-            
-            all_results.append({
-                "content": f"{created_at_display}: {memory['memory']}",
-                "score": memory.get("score", 0.0),
-                "user_id": speaker_b_user_id,
-                "metadata": {
-                    "id": memory.get("id", ""),
-                    "created_at": created_at_original,
-                    "created_at_display": created_at_display,
-                    "memory": memory.get("memory", ""),
-                    "user_id": memory.get("user_id", ""),
-                }
-            })
-        
-        # Format memories (for formatted_context)
-        speaker_a_memories = [
-            f"{self._convert_timestamp_to_display_timezone(memory['created_at'])}: {memory['memory']}"
-            for memory in search_speaker_a_results.get("results", [])
-        ]
-        speaker_b_memories = [
-            f"{self._convert_timestamp_to_display_timezone(memory['created_at'])}: {memory['memory']}"
-            for memory in search_speaker_b_results.get("results", [])
-        ]
-        
-        # Format memories as readable text (not JSON array)
-        speaker_a_memories_text = "\n".join(speaker_a_memories) if speaker_a_memories else "(No memories found)"
-        speaker_b_memories_text = "\n".join(speaker_b_memories) if speaker_b_memories else "(No memories found)"
-        
-        # Use standard default template
+        # Use default template
         template = self._prompts["online_api"].get("templates", {}).get("default", "")
-        context = template.format(
+        formatted_context = template.format(
             speaker_1=speaker_a,
             speaker_1_memories=speaker_a_memories_text,
             speaker_2=speaker_b,
             speaker_2_memories=speaker_b_memories_text,
         )
         
-        # Return results
         return SearchResult(
             query=query,
             conversation_id=conversation_id,
@@ -611,9 +415,9 @@ class Mem0Adapter(OnlineAPIAdapter):
                 "top_k": top_k,
                 "dual_perspective": True,
                 "user_ids": [speaker_a_user_id, speaker_b_user_id],
-                "formatted_context": context,
-                "speaker_a_memories_count": len(speaker_a_memories),
-                "speaker_b_memories_count": len(speaker_b_memories),
+                "formatted_context": formatted_context,
+                "speaker_a_memories_count": len(results_a),
+                "speaker_b_memories_count": len(results_b),
             }
         )
     

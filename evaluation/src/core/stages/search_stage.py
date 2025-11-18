@@ -65,7 +65,10 @@ async def run_search_stage(
     # Build conversation_id to conversation mapping (for online API cache rebuild)
     conv_id_to_conv = {conv.conversation_id: conv for conv in conversations}
     
-    semaphore = asyncio.Semaphore(20)
+    # Get concurrency limit from adapter config (fallback to 20 if not specified)
+    num_workers = getattr(adapter, 'num_workers', 20)
+    semaphore = asyncio.Semaphore(num_workers)
+    print(f"Search concurrency: {num_workers} workers")
     
     # Create fine-grained progress bar (track by questions)
     total_questions = len(qa_pairs)

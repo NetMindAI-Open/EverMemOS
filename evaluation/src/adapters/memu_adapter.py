@@ -55,6 +55,12 @@ class MemuAdapter(OnlineAPIAdapter):
         self.task_timeout = config.get("task_timeout", 90)
         self.max_retries = config.get("max_retries", 5)
         
+        # Get valid_users list for filtering (used for retrying failed tasks)
+        self.valid_users = config.get("valid_users", None)
+        
+        # Mock mode for testing (skip actual API calls)
+        self.mock_mode = config.get("mock_mode", False)
+        
         # HTTP headers
         self.headers = {
             "Authorization": f"Bearer {api_key}",
@@ -64,6 +70,13 @@ class MemuAdapter(OnlineAPIAdapter):
         self.console = Console()
         self.console.print(f"   Base URL: {self.base_url}", style="dim")
         self.console.print(f"   Agent: {self.agent_name} ({self.agent_id})", style="dim")
+        if self.valid_users:
+            self.console.print(f"   Valid Users Filter: {len(self.valid_users)} user(s)", style="yellow")
+        if self.mock_mode:
+            self.console.print(f"   🧪 Mock Mode: ENABLED (API calls will be simulated)", style="bold yellow")
+        
+        # Force sequential processing (override num_workers)
+        self.console.print(f"   🔄 Sequential Mode: ENABLED (all operations are serial)", style="bold cyan")
     
     async def add(
         self, 
@@ -71,149 +84,146 @@ class MemuAdapter(OnlineAPIAdapter):
         **kwargs
     ) -> Dict[str, Any]:
         """
-        Ingest conversations into Memu.
+        Ingest conversation data (call online API) in pure sequential mode.
         
-        Memu API specifics:
-        - Uses HTTP RESTful API to submit memories
-        - Returns async task ID, needs polling for status
-        - Search only available after task completion
-        - Supports dual perspective handling (stores memories separately for two speakers)
+        Override parent's add() method to enforce sequential processing:
+        - Process conversations one by one (no concurrency)
+        - Process users within each conversation one by one (no concurrency)
+        - Wait for each task to complete before proceeding to the next
+        
+        This ensures Memu API is not overwhelmed with concurrent requests.
         """
-        self.console.print(f"\n{'='*60}", style="bold cyan")
-        self.console.print(f"Stage 1: Adding to Memu", style="bold cyan")
-        self.console.print(f"{'='*60}", style="bold cyan")
-        
         conversation_ids = []
-        task_ids = []
+        add_results = []
         
+        # Process conversations sequentially (one by one)
         for conv in conversations:
             conv_id = conv.conversation_id
-            conversation_ids.append(conv_id)
             
-            # Get dual perspective information
-            speaker_a = conv.metadata.get("speaker_a", "User")
-            speaker_b = conv.metadata.get("speaker_b", "Assistant")
-            speaker_a_user_id = self._extract_user_id(conv, speaker="speaker_a")
-            speaker_b_user_id = self._extract_user_id(conv, speaker="speaker_b")
+            # Extract conversation info (speaker names, user_ids, perspective mode)
+            conv_info = self._extract_conversation_info(conversation=conv, conversation_id=conv_id)
             
-            # Determine if dual perspective is needed
-            need_dual_perspective = self._need_dual_perspective(speaker_a, speaker_b)
+            # Get format type
+            format_type = self._get_format_type()
             
-            self.console.print(f"\n📥 Adding conversation: {conv_id}", style="cyan")
-            self.console.print(f"   Speaker A: {speaker_a} ({speaker_a_user_id})", style="dim")
-            self.console.print(f"   Speaker B: {speaker_b} ({speaker_b_user_id})", style="dim")
-            self.console.print(f"   Dual Perspective: {need_dual_perspective}", style="dim")
-            
-            # Get session_date (ISO format date)
-            session_date = None
-            if conv.messages and conv.messages[0].timestamp:
-                session_date = conv.messages[0].timestamp.strftime("%Y-%m-%d")
+            # Organize messages based on perspective
+            if conv_info["need_dual_perspective"]:
+                # Dual perspective: prepare messages for both speakers
+                speaker_a_messages = self._conversation_to_messages(
+                    conv, 
+                    format_type=format_type,
+                    perspective="speaker_a"
+                )
+                speaker_b_messages = self._conversation_to_messages(
+                    conv,
+                    format_type=format_type,
+                    perspective="speaker_b"
+                )
+                
+                # Add messages for speaker_a first (sequential)
+                result_a = await self._add_user_messages(
+                    conv, speaker_a_messages, speaker="speaker_a", **kwargs
+                )
+                
+                # Wait for speaker_a's task to complete
+                await self._wait_for_conversation_tasks(
+                    [result_a], 
+                    conversation_id=conv_id,
+                    **kwargs
+                )
+                
+                # Add messages for speaker_b second (sequential)
+                result_b = await self._add_user_messages(
+                    conv, speaker_b_messages, speaker="speaker_b", **kwargs
+                )
+                
+                # Wait for speaker_b's task to complete
+                await self._wait_for_conversation_tasks(
+                    [result_b], 
+                    conversation_id=conv_id,
+                    **kwargs
+                )
+                
+                # Collect results
+                conversation_ids.append(conv_id)
+                add_results.extend([result_a, result_b])
             else:
-                from datetime import datetime
-                session_date = datetime.now().strftime("%Y-%m-%d")
-            
-            # Add memories based on perspective needs
-            if need_dual_perspective:
-                # Dual perspective: add memories separately for speaker_a and speaker_b
-                task_id_a = await self._add_single_user(
-                    conv, speaker_a_user_id, speaker_a, session_date, perspective="speaker_a"
+                # Single perspective: prepare messages for speaker_a only
+                messages = self._conversation_to_messages(
+                    conv,
+                    format_type=format_type,
+                    perspective=None
                 )
-                task_id_b = await self._add_single_user(
-                    conv, speaker_b_user_id, speaker_b, session_date, perspective="speaker_b"
+                
+                # Add messages for single user
+                result = await self._add_user_messages(
+                    conv, messages, speaker="speaker_a", **kwargs
                 )
-                if task_id_a:
-                    task_ids.append(task_id_a)
-                if task_id_b:
-                    task_ids.append(task_id_b)
-            else:
-                # Single perspective: only add memories for speaker_a
-                task_id = await self._add_single_user(
-                    conv, speaker_a_user_id, speaker_a, session_date, perspective="speaker_a"
+                
+                # Wait for task to complete
+                await self._wait_for_conversation_tasks(
+                    [result], 
+                    conversation_id=conv_id,
+                    **kwargs
                 )
-                if task_id:
-                    task_ids.append(task_id)
+                
+                # Collect results
+                conversation_ids.append(conv_id)
+                add_results.append(result)
         
-        # Wait for all tasks to complete
-        if task_ids:
-            self.console.print(f"\n⏳ Waiting for {len(task_ids)} task(s) to complete...", style="bold yellow")
-            self._wait_for_all_tasks(task_ids)
+        # Post-processing (already waited for all tasks, so this is a no-op)
+        await self._post_add_process(add_results, **kwargs)
         
-        self.console.print(f"\n✅ All conversations added to Memu", style="bold green")
-        
-        # Return metadata
-        return {
-            "type": "online_api",
-            "system": "memu",
-            "conversation_ids": conversation_ids,
-            "task_ids": task_ids,
-        }
+        # Build and return result
+        return self._build_add_result(conversation_ids, add_results, **kwargs)
     
-    def _need_dual_perspective(self, speaker_a: str, speaker_b: str) -> bool:
-        """
-        Determine if dual perspective handling is needed.
-        
-        Single perspective (no dual perspective needed):
-        - Standard roles: "user"/"assistant"
-        - Case variants: "User"/"Assistant"
-        - With suffix: "user_123"/"assistant_456"
-        
-        Dual perspective (dual perspective needed):
-        - Custom names: "Caroline"/"Manu"
-        """
-        def is_standard_role(speaker: str) -> bool:
-            speaker = speaker.lower()
-            # Exact match
-            if speaker in ["user", "assistant"]:
-                return True
-            # Starts with user or assistant
-            if speaker.startswith("user") or speaker.startswith("assistant"):
-                return True
-            return False
-        
-        return not (is_standard_role(speaker_a) and is_standard_role(speaker_b))
-    
-    async def _add_single_user(
-        self,
+    async def _add_user_messages(
+        self, 
         conv: Conversation,
-        user_id: str,
-        user_name: str,
-        session_date: str,
-        perspective: str
-    ) -> str:
+        messages: List[Dict[str, Any]],
+        speaker: str,
+        **kwargs
+    ) -> Any:
         """
-        Add memories for a single user.
+        Add messages for a single user to Memu.
         
         Args:
-            conv: Conversation object
-            user_id: User ID
-            user_name: User name
-            session_date: Session date
-            perspective: Perspective (speaker_a or speaker_b)
+            conv: Original conversation object
+            messages: Formatted message list
+            speaker: "speaker_a" or "speaker_b"
+            **kwargs: Extra parameters
         
         Returns:
-            task_id: Task ID (if successful)
+            task_id: Task ID for tracking async task
         """
-        # Convert to Memu API format (with specified perspective)
-        base_messages = self._conversation_to_messages(conv, format_type="basic", perspective=perspective)
+        # Extract user_id and user_name
+        user_id = self._extract_user_id(conv, speaker=speaker)
+        user_name = conv.metadata.get(speaker, "User" if speaker == "speaker_a" else "Assistant")
         
-        # Add extra fields required by Memu API
-        conversation_messages = []
-        for i, msg in enumerate(conv.messages):
-            # Construct message time (ISO format)
-            msg_time = msg.timestamp.isoformat() + "Z" if msg.timestamp else None
+        # Check if user_id is in valid_users list (if valid_users is set)
+        if self.valid_users is not None and user_id not in self.valid_users:
+            self.console.print(f"   ⏭️  Skipping {user_name} ({user_id}): not in valid_users", style="dim yellow")
+            return None
             
-            conversation_messages.append({
-                "role": base_messages[i]["role"],
-                "name": msg.speaker_name or user_name,
-                "time": msg_time,
-                "content": base_messages[i]["content"]
-            })
+        # Get session_date (ISO format date)
+        session_date = None
+        if conv.messages and conv.messages[0].timestamp:
+            session_date = conv.messages[0].timestamp.strftime("%Y-%m-%d")
+        else:
+            from datetime import datetime
+            session_date = datetime.now().strftime("%Y-%m-%d")
+            
+        # Validate that all messages have name field
+        # Note: messages already contain name and time from base class _conversation_to_messages
+        for msg in messages:
+            if not msg.get("name"):
+                raise ValueError(f"Message missing 'name' field: {msg}")
         
-        self.console.print(f"   📤 Adding for {user_name} ({user_id}): {len(conversation_messages)} messages", style="dim")
+        self.console.print(f"   📤 Adding for {user_name} ({user_id}): {len(messages)} messages", style="dim")
         
         # Construct request payload
         payload = {
-            "conversation": conversation_messages,
+            "conversation": messages,
             "user_id": user_id,
             "user_name": user_name,
             "agent_id": self.agent_id,
@@ -221,12 +231,32 @@ class MemuAdapter(OnlineAPIAdapter):
             "session_date": session_date
         }
         
+        # Mock mode: Skip actual API call
+        if self.mock_mode:
+            self.console.print(
+                f"      🧪 [MOCK] Would add {len(messages)} messages for {user_name} ({user_id})",
+                style="cyan"
+            )
+            self.console.print(
+                f"      🧪 [MOCK] Payload: user_id={user_id}, agent_id={self.agent_id}, "
+                f"session_date={session_date}, messages={len(messages)}",
+                style="dim cyan"
+            )
+            self.console.print(f"      🧪 [MOCK] Returning task_id=None", style="cyan")
+            return None
+        
         # Submit task (with retry)
+        import asyncio
         task_id = None
         for attempt in range(self.max_retries):
             try:
                 url = f"{self.base_url}/api/v1/memory/memorize"
-                response = requests.post(url, headers=self.headers, json=payload)
+                # Use run_in_executor to avoid blocking event loop
+                loop = asyncio.get_event_loop()
+                response = await loop.run_in_executor(
+                    None, 
+                    lambda: requests.post(url, headers=self.headers, json=payload)
+                )
                 response.raise_for_status()
                 
                 result = response.json()
@@ -239,29 +269,102 @@ class MemuAdapter(OnlineAPIAdapter):
             except Exception as e:
                 if attempt < self.max_retries - 1:
                     self.console.print(
-                        f"      ⚠️  Retry {attempt + 1}/{self.max_retries}: {e}", 
+                        f"      ⚠️  [{user_name}] Retry {attempt + 1}/{self.max_retries}: {e}",
                         style="yellow"
                     )
                     time.sleep(2 ** attempt)
                 else:
                     self.console.print(
-                        f"      ❌ Failed after {self.max_retries} retries: {e}", 
+                        f"      ❌ [{user_name}] Failed after {self.max_retries} retries: {e}",
                         style="red"
                     )
                     raise e
         
         return task_id
     
-    def _wait_for_all_tasks(self, task_ids: List[str]) -> bool:
+    async def _wait_for_conversation_tasks(
+        self, 
+        task_results: List[Any], 
+        **kwargs
+    ) -> None:
+        """
+        Wait for tasks from a single conversation to complete.
+        
+        This is called per-conversation, before releasing the semaphore.
+        This ensures that Memu respects the num_workers limit on concurrent tasks.
+        
+        Args:
+            task_results: List of task_ids from this conversation
+            **kwargs: Extra parameters (including conversation_id)
+        """
+        # Filter out None values
+        task_ids = [task_id for task_id in task_results if task_id is not None]
+        
+        # Extract conversation_id for logging
+        conversation_id = kwargs.get("conversation_id", "unknown")
+        
+        if task_ids:
+            # Wait for this conversation's tasks to complete
+            await self._wait_for_all_tasks(task_ids, conversation_id)
+    
+    async def _post_add_process(self, add_results: List[Any], **kwargs) -> None:
+        """
+        Post-processing hook.
+        
+        For Memu, all tasks have already been waited for in _wait_for_conversation_tasks,
+        so this is now a no-op.
+        
+        Args:
+            add_results: List of task_ids returned from _add_user_messages
+            **kwargs: Extra parameters
+        """
+        # All tasks already waited for in _wait_for_conversation_tasks
+        # This is now a no-op
+        pass
+    
+    def _build_add_result(
+        self,
+        conversation_ids: List[str],
+        add_results: List[Any],
+        **kwargs
+    ) -> Dict[str, Any]:
+        """
+        Build the final result dict with task_ids for Memu.
+        
+        Args:
+            conversation_ids: List of conversation IDs
+            add_results: List of task_ids
+            **kwargs: Extra parameters
+        
+        Returns:
+            Result dictionary with task_ids
+        """
+        # Filter out None values to get actual task_ids
+        task_ids = [task_id for task_id in add_results if task_id is not None]
+        
+        return {
+            "type": "online_api",
+            "system": "memu",
+            "conversation_ids": conversation_ids,
+            "task_ids": task_ids,
+        }
+    
+    async def _wait_for_all_tasks(
+        self, 
+        task_ids: List[str],
+        conversation_id: str = "unknown"
+    ) -> bool:
         """
         Wait for all tasks to complete.
         
         Args:
             task_ids: Task ID list
+            conversation_id: Conversation ID for logging
         
         Returns:
             Whether all tasks completed successfully
         """
+        import asyncio
         if not task_ids:
             return True
         
@@ -270,6 +373,8 @@ class MemuAdapter(OnlineAPIAdapter):
         
         # Show progress
         total_tasks = len(task_ids)
+        # Create a short label for logging
+        conv_label = f"[{conversation_id}]"
         
         while time.time() - start_time < self.task_timeout:
             completed_in_round = []
@@ -278,7 +383,12 @@ class MemuAdapter(OnlineAPIAdapter):
             for task_id in list(pending_tasks):
                 try:
                     url = f"{self.base_url}/api/v1/memory/memorize/status/{task_id}"
-                    response = requests.get(url, headers=self.headers)
+                    # Use run_in_executor to avoid blocking event loop
+                    loop = asyncio.get_event_loop()
+                    response = await loop.run_in_executor(
+                        None,
+                        lambda: requests.get(url, headers=self.headers)
+                    )
                     response.raise_for_status()
                     result = response.json()
                     status = result.get("status")
@@ -289,13 +399,13 @@ class MemuAdapter(OnlineAPIAdapter):
                     elif status in ["FAILED", "FAILURE"]:
                         failed_in_round.append(task_id)
                         self.console.print(
-                            f"   ❌ Task {task_id} failed: {result.get('detail_info', 'Unknown error')}", 
+                            f"   {conv_label} ❌ Task {task_id} failed: {result.get('detail_info', 'Unknown error')}", 
                             style="red"
                         )
                     
                 except Exception as e:
                     self.console.print(
-                        f"   ⚠️  Error checking task {task_id}: {e}", 
+                        f"   {conv_label} ⚠️  Error checking task {task_id}: {e}", 
                         style="yellow"
                     )
             
@@ -307,14 +417,14 @@ class MemuAdapter(OnlineAPIAdapter):
             completed_count = total_tasks - len(pending_tasks)
             if completed_in_round or failed_in_round:
                 self.console.print(
-                    f"   📊 Progress: {completed_count}/{total_tasks} tasks completed",
+                    f"   {conv_label} 📊 Progress: {completed_count}/{total_tasks} tasks completed",
                     style="cyan"
                 )
             
             # If all tasks completed
             if not pending_tasks:
                 self.console.print(
-                    f"   ✅ All {total_tasks} tasks completed!",
+                    f"   {conv_label} ✅ All {total_tasks} tasks completed!",
                     style="bold green"
                 )
                 return len(failed_in_round) == 0
@@ -323,71 +433,44 @@ class MemuAdapter(OnlineAPIAdapter):
             if pending_tasks:
                 elapsed = time.time() - start_time
                 self.console.print(
-                    f"   ⏳ {len(pending_tasks)} task(s) still processing... ({elapsed:.0f}s elapsed)",
+                    f"   {conv_label} ⏳ {len(pending_tasks)} task(s) still processing... ({elapsed:.0f}s elapsed)",
                     style="dim"
                 )
-                time.sleep(self.task_check_interval)
+                await asyncio.sleep(self.task_check_interval)
         
         # Timeout
         self.console.print(
-            f"   ⚠️  Timeout: {len(pending_tasks)} task(s) not completed within {self.task_timeout}s",
+            f"   {conv_label} ⚠️  Timeout: {len(pending_tasks)} task(s) not completed within {self.task_timeout}s",
             style="yellow"
         )
         return False
     
-    async def search(
-        self, 
-        query: str,
-        conversation_id: str,
-        index: Any,
-        **kwargs
-    ) -> SearchResult:
-        """
-        Retrieve relevant memories from Memu.
-        
-        Uses HTTP RESTful API to call search interface directly.
-        Supports dual perspective search.
-        """
-        # Get conversation information
-        conversation = kwargs.get("conversation")
-        if conversation:
-            speaker_a = conversation.metadata.get("speaker_a", "")
-            speaker_b = conversation.metadata.get("speaker_b", "")
-            speaker_a_user_id = self._extract_user_id(conversation, speaker="speaker_a")
-            speaker_b_user_id = self._extract_user_id(conversation, speaker="speaker_b")
-            need_dual = self._need_dual_perspective(speaker_a, speaker_b)
-        else:
-            # Fallback: use default user_id
-            speaker_a_user_id = f"{conversation_id}_speaker_a"
-            speaker_b_user_id = f"{conversation_id}_speaker_b"
-            speaker_a = "speaker_a"
-            speaker_b = "speaker_b"
-            need_dual = False
-        
-        top_k = kwargs.get("top_k", 10)
-        min_similarity = kwargs.get("min_similarity", 0.3)
-        
-        if need_dual:
-            # Dual perspective search
-            return await self._search_dual_perspective(
-                query, conversation_id, speaker_a, speaker_b, 
-                speaker_a_user_id, speaker_b_user_id, top_k, min_similarity
-            )
-        else:
-            # Single perspective search
-            return await self._search_single_perspective(
-                query, conversation_id, speaker_a_user_id, top_k, min_similarity
-            )
-    
-    async def _search_single_perspective(
+    async def _search_single_user(
         self,
         query: str,
         conversation_id: str,
         user_id: str,
         top_k: int,
-        min_similarity: float
-    ) -> SearchResult:
-        """Single perspective search."""
+        **kwargs
+    ) -> List[Dict[str, Any]]:
+        """
+        Search memories for a single user (Memu-specific with categories summary).
+        
+        Calls Memu search API and fetches categories summary.
+        
+        Args:
+            query: Query text
+            conversation_id: Conversation ID (not used by Memu)
+            user_id: User ID to search for
+            top_k: Number of results to retrieve
+            **kwargs: Additional parameters (e.g., min_similarity)
+        
+        Returns:
+            List of search results with categories_summary in metadata
+        """
+        import asyncio
+        min_similarity = kwargs.get("min_similarity", 0.3)
+        
         try:
             url = f"{self.base_url}/api/v1/memory/retrieve/related-memory-items"
             payload = {
@@ -398,107 +481,157 @@ class MemuAdapter(OnlineAPIAdapter):
                 "min_similarity": min_similarity
             }
             
-            response = requests.post(url, headers=self.headers, json=payload)
+            # Use run_in_executor to avoid blocking event loop
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(
+                None,
+                lambda: requests.post(url, headers=self.headers, json=payload)
+            )
             response.raise_for_status()
             result = response.json()
             
         except Exception as e:
             self.console.print(f"❌ Memu search error: {e}", style="red")
-            return SearchResult(
-                query=query,
-                conversation_id=conversation_id,
-                results=[],
-                retrieval_metadata={
-                    "error": str(e),
-                    "user_ids": [user_id]
-                }
-            )
+            return []
+        
+        # Get categories summary (fail silently if error)
+        categories_summary = await self._get_categories_summary(user_id)
         
         # Convert to standard format
-        search_results = []
+        results = []
         related_memories = result.get("related_memories", [])
         
         for item in related_memories:
             memory = item.get("memory", {})
-            content = memory.get("content", "")
-            score = item.get("similarity_score", 0.0)
-            
-            search_results.append({
-                "content": content,
-                "score": score,
+            results.append({
+                "content": memory.get("content", ""),
+                "score": item.get("similarity_score", 0.0),
                 "user_id": user_id,
                 "metadata": {
                     "id": memory.get("memory_id", ""),
                     "category": memory.get("category", ""),
                     "created_at": memory.get("created_at", ""),
                     "happened_at": memory.get("happened_at", ""),
+                    "categories_summary": categories_summary,  # Store summary for this user
                 }
             })
         
-        # Get all memories (categories summary) - fail silently if error
-        categories_summary = self._get_categories_summary(user_id)
+        return results
+    
+    def _build_single_search_result(
+        self,
+        query: str,
+        conversation_id: str,
+        results: List[Dict[str, Any]],
+        user_id: str,
+        top_k: int,
+        **kwargs
+    ) -> SearchResult:
+        """
+        Build SearchResult for single perspective (Memu: custom context with summary).
         
-        # Build custom context (with categories summary)
-        formatted_context = self._build_memu_context(
-            search_results=search_results,
+        Args:
+            query: Query text
+            conversation_id: Conversation ID
+            results: Search results from _search_single_user
+            user_id: User ID
+            top_k: Number of results requested
+            **kwargs: Additional parameters (e.g., min_similarity)
+        
+        Returns:
+            SearchResult with custom formatted_context
+        """
+        min_similarity = kwargs.get("min_similarity", 0.3)
+        
+        # Extract categories_summary from first result's metadata
+        categories_summary = results[0]["metadata"]["categories_summary"] if results else ""
+        
+        # Build custom context using Memu-specific logic
+        formatted_context = self._format_user_memories_with_summary(
+            results=results,
             categories_summary=categories_summary,
-            top_k=top_k
+            top_k=top_k,
+            memory_separator="\n\n"
         )
         
         return SearchResult(
             query=query,
             conversation_id=conversation_id,
-            results=search_results,
+            results=results,
             retrieval_metadata={
                 "system": "memu",
                 "user_ids": [user_id],
                 "top_k": top_k,
                 "min_similarity": min_similarity,
-                "total_found": result.get("total_found", len(search_results)),
+                "total_found": len(results),
                 "formatted_context": formatted_context,
             }
         )
     
-    async def _search_dual_perspective(
+    def _build_dual_search_result(
         self,
         query: str,
         conversation_id: str,
+        all_results: List[Dict[str, Any]],
+        results_a: List[Dict[str, Any]],
+        results_b: List[Dict[str, Any]],
         speaker_a: str,
         speaker_b: str,
         speaker_a_user_id: str,
         speaker_b_user_id: str,
         top_k: int,
-        min_similarity: float
+        **kwargs
     ) -> SearchResult:
-        """Dual perspective search."""
-        # Search memories for both users separately
-        result_a = await self._search_single_perspective(
-            query, conversation_id, speaker_a_user_id, top_k, min_similarity
+        """
+        Build SearchResult for dual perspective (Memu: custom context with summaries).
+        
+        Formats memories using Memu-specific dual perspective logic,
+        including categories summaries for both speakers.
+        
+        Args:
+            query: Query text
+            conversation_id: Conversation ID
+            all_results: Merged results (for fallback)
+            results_a: Speaker A's search results
+            results_b: Speaker B's search results
+            speaker_a: Speaker A name
+            speaker_b: Speaker B name
+            speaker_a_user_id: Speaker A user ID
+            speaker_b_user_id: Speaker B user ID
+            top_k: Number of results per user
+            **kwargs: Additional parameters (e.g., min_similarity)
+        
+        Returns:
+            SearchResult with custom formatted_context
+        """
+        min_similarity = kwargs.get("min_similarity", 0.3)
+        
+        # Extract categories summaries from results' metadata
+        categories_summary_a = results_a[0]["metadata"]["categories_summary"] if results_a else ""
+        categories_summary_b = results_b[0]["metadata"]["categories_summary"] if results_b else ""
+        
+        # Build dual perspective context using Memu-specific logic
+        speaker_a_memories_text = self._format_user_memories_with_summary(
+            results=results_a,
+            categories_summary=categories_summary_a,
+            top_k=top_k,
+            memory_separator="\n"
         )
-        result_b = await self._search_single_perspective(
-            query, conversation_id, speaker_b_user_id, top_k, min_similarity
+        
+        speaker_b_memories_text = self._format_user_memories_with_summary(
+            results=results_b,
+            categories_summary=categories_summary_b,
+            top_k=top_k,
+            memory_separator="\n"
         )
         
-        # Merge results
-        all_results = result_a.results + result_b.results
-        
-        # Sort by score
-        all_results.sort(key=lambda x: x.get("score", 0), reverse=True)
-        
-        # Keep only top_k
-        all_results = all_results[:top_k]
-        
-        # Get categories summary for both speakers - fail silently if error
-        categories_summary_a = self._get_categories_summary(speaker_a_user_id)
-        categories_summary_b = self._get_categories_summary(speaker_b_user_id)
-        
-        # Build dual perspective context (with categories summary)
-        formatted_context = self._build_dual_perspective_context(
-            speaker_a=speaker_a,
-            speaker_b=speaker_b,
-            results_a=result_a.results,
-            results_b=result_b.results,
-            top_k=top_k
+        # Wrap using default template
+        template = self._prompts["online_api"].get("templates", {}).get("default", "")
+        formatted_context = template.format(
+            speaker_1=speaker_a,
+            speaker_1_memories=speaker_a_memories_text,
+            speaker_2=speaker_b,
+            speaker_2_memories=speaker_b_memories_text,
         )
         
         return SearchResult(
@@ -518,150 +651,42 @@ class MemuAdapter(OnlineAPIAdapter):
             }
         )
     
-    def _build_dual_perspective_context(
+    def _format_user_memories_with_summary(
         self,
-        speaker_a: str,
-        speaker_b: str,
-        results_a: List[Dict[str, Any]],
-        results_b: List[Dict[str, Any]],
-        categories_summary_a: str = "",
-        categories_summary_b: str = "",
-        top_k: int = 5
-    ) -> str:
-        """
-        Build dual perspective context using default template.
-        
-        Steps:
-        1. Build categories summary for each speaker (if available)
-        2. Build memory list with happened_at for each speaker
-        3. Wrap in dual perspective format using online_api.templates.default
-        
-        Args:
-            speaker_a: Speaker A name
-            speaker_b: Speaker B name
-            results_a: Search results for speaker A
-            results_b: Search results for speaker B
-            categories_summary_a: Categories summary for speaker A (optional)
-            categories_summary_b: Categories summary for speaker B (optional)
-            top_k: Number of results to show (default: 5)
-        """
-        # Build Speaker A's content
-        speaker_a_content_parts = []
-        
-        # Add categories summary if available
-        if categories_summary_a:
-            speaker_a_content_parts.append(categories_summary_a)
-        
-        # Build Speaker A's memories (with happened_at and category)
-        speaker_a_memories = []
-        if results_a:
-            for idx, result in enumerate(results_a[:top_k], 1):
-                content = result.get("content", "")
-                metadata = result.get("metadata", {})
-                happened_at = metadata.get("happened_at", "")
-                category = metadata.get("category", "")
-                
-                memory_text = f"{idx}. {content}"
-                
-                metadata_parts = []
-                if happened_at:
-                    date_str = happened_at.split("T")[0] if "T" in happened_at else happened_at
-                    metadata_parts.append(f"Date: {date_str}")
-                if category:
-                    metadata_parts.append(f"Category: {category}")
-                
-                if metadata_parts:
-                    memory_text += f" ({', '.join(metadata_parts)})"
-                
-                speaker_a_memories.append(memory_text)
-        
-        if speaker_a_memories:
-            if categories_summary_a:
-                speaker_a_content_parts.append("\n## Related Memories\n")
-            speaker_a_content_parts.append("\n".join(speaker_a_memories))
-        
-        speaker_a_memories_text = "".join(speaker_a_content_parts)
-        
-        # Build Speaker B's content
-        speaker_b_content_parts = []
-        
-        # Add categories summary if available
-        if categories_summary_b:
-            speaker_b_content_parts.append(categories_summary_b)
-        
-        # Build Speaker B's memories (with happened_at and category)
-        speaker_b_memories = []
-        if results_b:
-            for idx, result in enumerate(results_b[:top_k], 1):
-                content = result.get("content", "")
-                metadata = result.get("metadata", {})
-                happened_at = metadata.get("happened_at", "")
-                category = metadata.get("category", "")
-                
-                memory_text = f"{idx}. {content}"
-                
-                metadata_parts = []
-                if happened_at:
-                    date_str = happened_at.split("T")[0] if "T" in happened_at else happened_at
-                    metadata_parts.append(f"Date: {date_str}")
-                if category:
-                    metadata_parts.append(f"Category: {category}")
-                
-                if metadata_parts:
-                    memory_text += f" ({', '.join(metadata_parts)})"
-                
-                speaker_b_memories.append(memory_text)
-        
-        if speaker_b_memories:
-            if categories_summary_b:
-                speaker_b_content_parts.append("\n## Related Memories\n")
-            speaker_b_content_parts.append("\n".join(speaker_b_memories))
-        
-        speaker_b_memories_text = "".join(speaker_b_content_parts)
-        
-        # Wrap using default template
-        template = self._prompts["online_api"].get("templates", {}).get("default", "")
-        return template.format(
-            speaker_1=speaker_a,
-            speaker_1_memories=speaker_a_memories_text,
-            speaker_2=speaker_b,
-            speaker_2_memories=speaker_b_memories_text,
-        )
-    
-    def _build_memu_context(
-        self,
-        search_results: List[Dict[str, Any]],
+        results: List[Dict[str, Any]],
         categories_summary: str = "",
-        top_k: int = 10
+        top_k: int = 10,
+        memory_separator: str = "\n\n"
     ) -> str:
         """
-        Build custom context for Memu, using happened_at field to show event occurrence time.
+        Format a single user's memories with categories summary.
+        
+        This is a helper method to avoid code duplication in building contexts.
         
         Args:
-            search_results: Search results list
+            results: Search results list
             categories_summary: Categories summary (optional)
-            top_k: Number of results to show (default: 10)
+            top_k: Number of results to show
+            memory_separator: Separator between memories (default: "\n\n")
         
         Returns:
-            Formatted context string
+            Formatted text combining summary and memories
         """
-        context_parts = []
+        content_parts = []
         
         # Add categories summary first (if available)
         if categories_summary:
-            context_parts.append(categories_summary)
+            content_parts.append(categories_summary)
         
         # Add search results
-        if search_results:
+        if results:
             if categories_summary:
-                context_parts.append("\n## Related Memories\n")
+                content_parts.append("\n## Related Memories\n")
             
             memories = []
-            for idx, result in enumerate(search_results[:top_k], 1):
+            for idx, result in enumerate(results[:top_k], 1):
                 content = result.get("content", "")
                 metadata = result.get("metadata", {})
-                
-                # Prioritize happened_at (event occurrence time), otherwise use created_at
                 happened_at = metadata.get("happened_at", "")
                 category = metadata.get("category", "")
                 
@@ -682,14 +707,14 @@ class MemuAdapter(OnlineAPIAdapter):
                 
                 memories.append(memory_text)
             
-            context_parts.append("\n\n".join(memories))
+            content_parts.append(memory_separator.join(memories))
         elif not categories_summary:
             # No categories summary and no search results
             return ""
         
-        return "".join(context_parts)
+        return "".join(content_parts)
     
-    def _get_all_memories(self, user_id: str) -> Dict[str, Any]:
+    async def _get_all_memories(self, user_id: str) -> Dict[str, Any]:
         """
         Get all memories (categories with summaries) for a user.
         
@@ -703,6 +728,7 @@ class MemuAdapter(OnlineAPIAdapter):
             API response containing categories and their summaries
             Returns empty dict if error occurs (fail silently)
         """
+        import asyncio
         try:
             url = f"{self.base_url}/api/v1/memory/retrieve/default-categories"
             payload = {
@@ -711,7 +737,12 @@ class MemuAdapter(OnlineAPIAdapter):
                 "want_memory_items": True
             }
             
-            response = requests.post(url, headers=self.headers, json=payload)
+            # Use run_in_executor to avoid blocking event loop
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(
+                None,
+                lambda: requests.post(url, headers=self.headers, json=payload)
+            )
             response.raise_for_status()
             result = response.json()
             
@@ -760,7 +791,7 @@ class MemuAdapter(OnlineAPIAdapter):
         
         return "".join(summary_parts)
     
-    def _get_categories_summary(self, user_id: str) -> str:
+    async def _get_categories_summary(self, user_id: str) -> str:
         """
         Get and format categories summary for a user.
         
@@ -774,7 +805,7 @@ class MemuAdapter(OnlineAPIAdapter):
             Formatted categories summary string
             Returns empty string if error occurs or no categories found
         """
-        memories = self._get_all_memories(user_id)
+        memories = await self._get_all_memories(user_id)
         return self._format_categories_summary(memories)
     
     def get_system_info(self) -> Dict[str, Any]:

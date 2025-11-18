@@ -170,6 +170,7 @@ evaluation-full = [
     {include-group = "evaluation"},
     # Online Memory Systems API 客户端
     "mem0ai>=1.0.0",          # Mem0
+    "zep-cloud>=2.0.0",       # Zep
 ]
 
 [project.scripts]

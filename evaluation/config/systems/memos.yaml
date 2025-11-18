@@ -12,11 +12,17 @@ api_key: "${MEMOS_KEY}"
 batch_size: 10  # Number of messages to send per batch (default)
 max_retries: 5
 
+# Rate limiting (Memos has 10 requests/second limit)
+request_interval: 0.1  # Seconds to wait after each API call (10 req/s = 0.1s)
+
+# Concurrency configuration
+num_workers: 1  # Process conversations sequentially due to rate limit
+
 # Dataset-specific overrides
 # Configuration overrides for specific datasets
 dataset_overrides:
   longmemeval:
-    batch_size: 5  # LongMemEval has large data, use smaller batch_size
+    batch_size: 6  # LongMemEval has large data, use smaller batch_size
 
 # ⏰ Post-Add Wait: Wait for background index build to complete (if needed)
 # Online API systems are usually asynchronous, so it takes time to build the index

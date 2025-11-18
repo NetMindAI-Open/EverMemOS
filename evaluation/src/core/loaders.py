@@ -13,13 +13,14 @@ from evaluation.src.core.data_models import Dataset, Conversation, Message, QAPa
 from evaluation.src.converters.registry import get_converter
 
 
-def load_dataset(dataset_name: str, data_path: str) -> Dataset:
+def load_dataset(dataset_name: str, data_path: str, max_content_length: Optional[int] = None) -> Dataset:
     """
     Smart dataset loading with automatic conversion support.
     
     Args:
         dataset_name: Dataset name (e.g., "locomo", "longmemeval", "personamem")
         data_path: Data file path or directory path
+        max_content_length: Optional max content length for truncating long messages
         
     Returns:
         Dataset: Standard format dataset
@@ -65,16 +66,17 @@ def load_dataset(dataset_name: str, data_path: str) -> Dataset:
                 raise FileNotFoundError(f"No JSON file found in {data_path_obj}")
             locomo_file = json_files[0]
     
-    return load_locomo_dataset(str(locomo_file), dataset_name=dataset_name)
+    return load_locomo_dataset(str(locomo_file), dataset_name=dataset_name, max_content_length=max_content_length)
 
 
-def load_locomo_dataset(data_path: str, dataset_name: str = "locomo") -> Dataset:
+def load_locomo_dataset(data_path: str, dataset_name: str = "locomo", max_content_length: Optional[int] = None) -> Dataset:
     """
     Load LoCoMo format dataset.
     
     Args:
         data_path: Locomo format data file path
         dataset_name: Dataset name (default "locomo", converted datasets should pass original name)
+        max_content_length: Optional max content length for truncating long messages
         
     Returns:
         Dataset: Standard format dataset
@@ -93,7 +95,7 @@ def load_locomo_dataset(data_path: str, dataset_name: str = "locomo") -> Dataset
         qa_data = item.get("qa", [])
         
         # Convert conversation
-        conversation = _convert_locomo_conversation(conversation_data, conv_id)
+        conversation = _convert_locomo_conversation(conversation_data, conv_id, max_content_length=max_content_length)
         conversations.append(conversation)
         
         # Convert QA pairs
@@ -109,8 +111,18 @@ def load_locomo_dataset(data_path: str, dataset_name: str = "locomo") -> Dataset
     )
 
 
-def _convert_locomo_conversation(conversation_data: dict, conv_id: str) -> Conversation:
-    """Convert LoCoMo conversation."""
+def _convert_locomo_conversation(conversation_data: dict, conv_id: str, max_content_length: Optional[int] = None) -> Conversation:
+    """
+    Convert LoCoMo conversation.
+    
+    Args:
+        conversation_data: LoCoMo format conversation data
+        conv_id: Conversation ID
+        max_content_length: Optional max content length for truncating long messages
+    
+    Returns:
+        Conversation: Standard format conversation
+    """
     messages = []
     
     # Get all session keys, sorted by numeric value
@@ -200,6 +212,10 @@ def _convert_locomo_conversation(conversation_data: dict, conv_id: str) -> Conve
                 blip_caption = msg.get("blip_caption", "an image")
                 speaker_name = msg['speaker']
                 content = f"[{speaker_name} shared an image: {blip_caption}] {content}"
+            
+            # Apply content length limit (if specified)
+            if max_content_length and len(content) > max_content_length:
+                content = content[:max_content_length]
             
             message = Message(
                 speaker_id=f"{msg['speaker'].lower().replace(' ', '_')}_{conv_id}",

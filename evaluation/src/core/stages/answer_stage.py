@@ -32,8 +32,11 @@ def build_context(search_result: SearchResult) -> str:
     # Single speaker scenario: simple formatting
     context_parts = []
     
-    # Add memory content
-    for idx, result in enumerate(search_result.results[:10], 1):
+    # Get top_k from retrieval_metadata, default to len(results) if not specified
+    top_k = search_result.retrieval_metadata.get("top_k", len(search_result.results))
+    
+    # Add memory content (use top_k instead of hardcoded 10)
+    for idx, result in enumerate(search_result.results[:top_k], 1):
         content = result.get("content", "")
         context_parts.append(f"{idx}. {content}")
     

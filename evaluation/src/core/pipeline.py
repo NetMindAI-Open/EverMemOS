@@ -84,6 +84,8 @@ class Pipeline:
         smoke_test: bool = False,
         smoke_messages: int = 10,
         smoke_questions: int = 3,
+        from_conv: int = 0,
+        to_conv: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
         Run complete Pipeline.
@@ -95,6 +97,8 @@ class Pipeline:
             smoke_test: Enable smoke test mode
             smoke_messages: Number of messages in smoke test (default 10)
             smoke_questions: Number of questions in smoke test (default 3)
+            from_conv: Starting conversation index to process (inclusive, 0-based)
+            to_conv: Ending conversation index to process (exclusive), None means all
             
         Returns:
             Evaluation results dictionary
@@ -111,13 +115,44 @@ class Pipeline:
             self.console.print(f"[yellow]🧪 Smoke Test Mode: {smoke_messages} messages, {smoke_questions} questions[/yellow]")
         self.console.print(f"{'='*60}\n", style="bold cyan")
         
-        # Smoke test: only process first K messages and questions from first conversation
+        # Apply conversation range filter (before smoke test)
+        # This allows processing a subset of conversations for incremental/distributed testing
+        if from_conv > 0 or to_conv is not None:
+            dataset = self._apply_conversation_range(dataset, from_conv, to_conv)
+            self.console.print(f"[cyan]📌 Conversation Range Filter Applied:[/cyan]")
+            self.console.print(f"[cyan]   Range: [{from_conv}:{to_conv or 'end'}][/cyan]")
+            self.console.print(f"[cyan]   Conversations: {len(dataset.conversations)}[/cyan]")
+            self.console.print(f"[cyan]   Questions: {len(dataset.qa_pairs)}[/cyan]\n")
+        
+        # Smoke test: trim messages and questions for quick validation
         if smoke_test:
             dataset = self._apply_smoke_test(dataset, smoke_messages, smoke_questions)
             self.console.print(f"[yellow]✂️  Smoke test applied:[/yellow]")
-            self.console.print(f"[yellow]   - Conversation: {dataset.conversations[0].conversation_id}[/yellow]")
-            self.console.print(f"[yellow]   - Messages: {len(dataset.conversations[0].messages)}[/yellow]")
-            self.console.print(f"[yellow]   - Questions: {len(dataset.qa_pairs)}[/yellow]\n")
+            self.console.print(f"[yellow]   - Conversations: {len(dataset.conversations)}[/yellow]")
+            if len(dataset.conversations) == 0:
+                self.console.print(f"[red]   ⚠️  No conversations selected! Check your filters.[/red]")
+            elif len(dataset.conversations) == 1:
+                self.console.print(f"[yellow]   - Conversation ID: {dataset.conversations[0].conversation_id}[/yellow]")
+            else:
+                first_id = dataset.conversations[0].conversation_id
+                last_id = dataset.conversations[-1].conversation_id
+                self.console.print(f"[yellow]   - Range: {first_id} to {last_id}[/yellow]")
+            total_messages = sum(len(conv.messages) for conv in dataset.conversations)
+            msg_limit = f"max {smoke_messages} per conv" if smoke_messages > 0 else "all"
+            qa_limit = f"max {smoke_questions} per conv" if smoke_questions > 0 else "all"
+            self.console.print(f"[yellow]   - Messages: {total_messages} ({msg_limit})[/yellow]")
+            self.console.print(f"[yellow]   - Questions: {len(dataset.qa_pairs)} ({qa_limit})[/yellow]\n")
+        
+        # Check if we have any conversations to process
+        if len(dataset.conversations) == 0:
+            self.console.print(f"[red]❌ No conversations to process! Check your --from-conv and --to-conv parameters.[/red]")
+            self.console.print(f"[yellow]💡 Tip: --to-conv should be greater than --from-conv (uses Python slice [from:to))[/yellow]")
+            return {
+                "error": "No conversations selected",
+                "stages_completed": [],
+                "total_conversations": 0,
+                "total_questions": 0,
+            }
         
         # Filter question categories based on config (e.g., filter out Category 5 adversarial questions)
         original_qa_count = len(dataset.qa_pairs)
@@ -368,15 +403,21 @@ class Pipeline:
         num_questions: int
     ) -> Dataset:
         """
-        Apply smoke test: keep only first N messages and M questions from first conversation.
+        Apply smoke test: trim messages and questions for quick validation.
         
         This allows quick validation of the complete workflow (Add → Search → Answer → Evaluate)
         using only a small subset of data to save time.
         
+        Strategy:
+        - If dataset has multiple conversations (e.g., from conversation range filter):
+          Apply smoke limits to ALL conversations in the range
+        - If dataset has only one conversation:
+          Apply smoke limits to that conversation (legacy behavior)
+        
         Args:
-            dataset: Original dataset
-            num_messages: Number of messages to keep (for Add stage), 0 means all
-            num_questions: Number of questions to keep (for Search/Answer/Evaluate stages), 0 means all
+            dataset: Original dataset (may be pre-filtered by conversation range)
+            num_messages: Number of messages to keep per conversation (for Add stage), 0 means all
+            num_questions: Number of questions to keep per conversation (for Search/Answer/Evaluate stages), 0 means all
             
         Returns:
             Trimmed dataset
@@ -384,47 +425,151 @@ class Pipeline:
         if not dataset.conversations:
             return dataset
         
-        # Keep only first conversation
-        first_conv = dataset.conversations[0]
-        conv_id = first_conv.conversation_id
+        # Process all conversations (respecting conversation range filter if applied)
+        trimmed_conversations = []
+        trimmed_qa_pairs = []
         
-        # Trim to first N messages (for Add)
-        # 0 means keep all messages
-        if num_messages > 0:
-            total_messages = len(first_conv.messages)
-            first_conv.messages = first_conv.messages[:num_messages]
-            msg_desc = f"{len(first_conv.messages)}/{total_messages}"
-        else:
-            msg_desc = f"{len(first_conv.messages)} (all)"
+        total_messages_before = 0
+        total_messages_after = 0
+        total_questions_before = 0
+        total_questions_after = 0
         
-        # 0 means keep all questions
-        conv_qa_pairs = [
-            qa for qa in dataset.qa_pairs 
-            if qa.metadata.get("conversation_id") == conv_id
-        ]
-        if num_questions > 0:
-            total_questions = len(conv_qa_pairs)
-            selected_qa_pairs = conv_qa_pairs[:num_questions]
-            qa_desc = f"{len(selected_qa_pairs)}/{total_questions}"
+        for conv in dataset.conversations:
+            conv_id = conv.conversation_id
+            
+            # Trim messages for this conversation
+            if num_messages > 0:
+                total_messages_before += len(conv.messages)
+                conv.messages = conv.messages[:num_messages]
+                total_messages_after += len(conv.messages)
+            else:
+                total_messages_after += len(conv.messages)
+                total_messages_before += len(conv.messages)
+            
+            trimmed_conversations.append(conv)
+            
+            # Trim questions for this conversation
+            conv_qa_pairs = [
+                qa for qa in dataset.qa_pairs 
+                if qa.metadata.get("conversation_id") == conv_id
+            ]
+            
+            if num_questions > 0:
+                total_questions_before += len(conv_qa_pairs)
+                selected_qa_pairs = conv_qa_pairs[:num_questions]
+                total_questions_after += len(selected_qa_pairs)
+            else:
+                selected_qa_pairs = conv_qa_pairs
+                total_questions_after += len(selected_qa_pairs)
+                total_questions_before += len(selected_qa_pairs)
+            
+            trimmed_qa_pairs.extend(selected_qa_pairs)
+        
+        # Log summary
+        if len(trimmed_conversations) == 1:
+            conv_desc = f"Conv {trimmed_conversations[0].conversation_id}"
         else:
-            selected_qa_pairs = conv_qa_pairs
-            qa_desc = f"{len(selected_qa_pairs)} (all)"
+            conv_desc = f"{len(trimmed_conversations)} conversations"
+        
+        msg_desc = f"{total_messages_after}/{total_messages_before}" if num_messages > 0 else f"{total_messages_after} (all)"
+        qa_desc = f"{total_questions_after}/{total_questions_before}" if num_questions > 0 else f"{total_questions_after} (all)"
         
         self.logger.info(
-            f"Smoke test: Conv {conv_id} - "
+            f"Smoke test: {conv_desc} - "
             f"{msg_desc} messages, "
             f"{qa_desc} questions"
         )
         
         return Dataset(
             dataset_name=dataset.dataset_name + "_smoke",
-            conversations=[first_conv],
-            qa_pairs=selected_qa_pairs,
+            conversations=trimmed_conversations,
+            qa_pairs=trimmed_qa_pairs,
             metadata={
                 **dataset.metadata, 
                 "smoke_test": True, 
-                "smoke_messages": num_messages if num_messages > 0 else len(first_conv.messages),
-                "smoke_questions": num_questions if num_questions > 0 else len(selected_qa_pairs),
+                "smoke_messages": num_messages,
+                "smoke_questions": num_questions,
+                "total_conversations": len(trimmed_conversations),
+            }
+        )
+    
+    def _apply_conversation_range(
+        self,
+        dataset: Dataset,
+        from_conv: int,
+        to_conv: Optional[int]
+    ) -> Dataset:
+        """
+        Filter conversations by index range.
+        
+        This allows processing a subset of conversations for incremental testing
+        or distributed processing. The conversation_id attribute of each Conversation
+        object remains unchanged, ensuring consistent user_id generation for online APIs.
+        
+        Args:
+            dataset: Original dataset
+            from_conv: Starting conversation index (inclusive, 0-based)
+            to_conv: Ending conversation index (exclusive), None means all
+            
+        Returns:
+            Filtered dataset with selected conversations and their QA pairs
+            
+        Example:
+            - Original: 100 conversations (locomo_0 to locomo_99)
+            - from_conv=10, to_conv=20: select conversations[10:20]
+            - Result: 10 conversations (locomo_10 to locomo_19)
+            - conversation_id attributes remain: "locomo_10", "locomo_11", ..., "locomo_19"
+        """
+        if not dataset.conversations:
+            return dataset
+        
+        # Apply range slicing
+        total_convs = len(dataset.conversations)
+        end_idx = to_conv if to_conv is not None else total_convs
+        
+        # Validation
+        if from_conv < 0:
+            self.logger.warning(f"from_conv < 0, resetting to 0")
+            from_conv = 0
+        if from_conv >= total_convs:
+            self.logger.warning(f"from_conv ({from_conv}) >= total conversations ({total_convs}), no data to process")
+            return Dataset(
+                dataset_name=dataset.dataset_name,
+                conversations=[],
+                qa_pairs=[],
+                metadata={
+                    **dataset.metadata, 
+                    "conversation_range": [from_conv, end_idx],
+                    "original_conversation_count": total_convs,
+                    "original_qa_count": len(dataset.qa_pairs),
+                }
+            )
+        
+        # Slice conversations (conversation_id attributes remain unchanged)
+        selected_convs = dataset.conversations[from_conv:end_idx]
+        selected_conv_ids = {conv.conversation_id for conv in selected_convs}
+        
+        # Filter QA pairs for selected conversations
+        selected_qa_pairs = [
+            qa for qa in dataset.qa_pairs
+            if qa.metadata.get("conversation_id") in selected_conv_ids
+        ]
+        
+        self.logger.info(
+            f"Conversation range [{from_conv}:{end_idx}] - "
+            f"selected {len(selected_convs)}/{total_convs} conversations, "
+            f"{len(selected_qa_pairs)}/{len(dataset.qa_pairs)} questions"
+        )
+        
+        return Dataset(
+            dataset_name=dataset.dataset_name,
+            conversations=selected_convs,
+            qa_pairs=selected_qa_pairs,
+            metadata={
+                **dataset.metadata,
+                "conversation_range": [from_conv, end_idx],
+                "original_conversation_count": total_convs,
+                "original_qa_count": len(dataset.qa_pairs),
             }
         )
     

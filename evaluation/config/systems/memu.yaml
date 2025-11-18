@@ -15,12 +15,21 @@ base_url: "https://api.memu.so"  # Memu official API address
 max_retries: 5
 
 # Agent configuration (for identifying dialog partners)
-agent_id: "evaluation_agent_03"
+agent_id: "evaluation_agent_04"
 agent_name: "Memory Evaluation Assistant"
+
 
 # Task status check configuration
 task_check_interval: 15  # Task status check interval (seconds)
-task_timeout: 3600  # Task timeout (seconds), recommended 90-120 seconds
+task_timeout: 4800  # Task timeout (seconds), recommended 90-120 seconds
+
+# Concurrency configuration
+num_workers: 1  # Number of concurrent conversations to process (default for most datasets)
+
+# Dataset-specific overrides
+dataset_overrides:
+  locomo:
+    num_workers: 1  # LoCoMo dataset requires lower concurrency
 
 # Search configuration
 min_similarity: 0.3  # Minimum similarity threshold (0-1)
