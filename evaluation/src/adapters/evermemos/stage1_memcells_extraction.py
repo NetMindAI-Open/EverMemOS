@@ -35,7 +35,7 @@ from memory_layer.memory_extractor.episode_memory_extractor import (
     EpisodeMemoryExtractor,
 )
 from memory_layer.memory_extractor.event_log_extractor import EventLogExtractor
-from memory_layer.types import RawDataType
+from api_specs.types import RawDataType
 
 # Clustering and Profile management components
 from memory_layer.cluster_manager import (

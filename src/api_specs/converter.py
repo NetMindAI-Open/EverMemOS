@@ -14,11 +14,11 @@ from infra_layer.adapters.input.format_transfer import (
     convert_conversation_to_raw_data_list,
 )
 
-from .schemas import DataFields
-from .memory_models import MemoryType
-from .dtos.memory_query import RetrieveMemRequest, FetchMemRequest
+from api_specs.schemas import DataFields
+from api_specs.memory_models import MemoryType
+from api_specs.dtos.memory_query import RetrieveMemRequest, FetchMemRequest
 from memory_layer.memory_manager import MemorizeRequest
-from memory_layer.types import RawDataType
+from api_specs.types import RawDataType
 from memory_layer.memcell_extractor.base_memcell_extractor import RawData
 
 import logging
@@ -93,7 +93,7 @@ def convert_dict_to_retrieve_mem_request(
             raise ValueError("user_id 是必需字段")
 
         # 处理 retrieve_method，如果未提供则使用默认值 keyword
-        from .memory_models import RetrieveMethod
+        from api_specs.memory_models import RetrieveMethod
 
         retrieve_method_str = data.get("retrieve_method", "keyword")
 

@@ -5,7 +5,7 @@
 import pytest
 
 from agentic_layer.fetch_mem_service import get_fetch_memory_service
-from agentic_layer.memory_models import (
+from api_specs.memory_models import (
     MemoryType,
     BaseMemoryModel,
     ProfileModel,

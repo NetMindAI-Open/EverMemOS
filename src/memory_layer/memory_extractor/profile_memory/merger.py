@@ -7,17 +7,22 @@ from typing import Any, Dict, Iterable, List, Optional
 
 from core.observation.logger import get_logger
 
-from ...llm.llm_provider import LLMProvider
+from memory_layer.llm.llm_provider import LLMProvider
 from .data_normalize import merge_single_profile, project_to_dict
 from .project_helpers import merge_projects_participated
 from .skill_helpers import merge_skill_lists_keep_highest_level
-from .types import ProfileMemory, ImportanceEvidence
-from .value_helpers import merge_value_with_evidences_lists, merge_value_with_evidences_lists_keep_highest_level
+from api_specs.profile_memory.types import ProfileMemory, ImportanceEvidence
+from .value_helpers import (
+    merge_value_with_evidences_lists,
+    merge_value_with_evidences_lists_keep_highest_level,
+)
 
 logger = get_logger(__name__)
 
 
-def convert_important_info_to_evidence(important_info: Dict[str, Any]) -> List[ImportanceEvidence]:
+def convert_important_info_to_evidence(
+    important_info: Dict[str, Any]
+) -> List[ImportanceEvidence]:
     """Convert aggregated group stats into ImportanceEvidence instances."""
     evidence_list: List[ImportanceEvidence] = []
     total_msgs = important_info["group_data"]["total_messages"]
@@ -75,12 +80,7 @@ class ProfileMemoryMerger:
                     has_date = True
                     date_value = parsed
             records.append(
-                {
-                    "entry": entry,
-                    "index": idx,
-                    "has_date": has_date,
-                    "date": date_value,
-                }
+                {"entry": entry, "index": idx, "has_date": has_date, "date": date_value}
             )
 
         # while len(records) > 10:
@@ -108,9 +108,10 @@ class ProfileMemoryMerger:
 
     @classmethod
     def _profile_memory_to_prompt_dict(cls, profile: ProfileMemory) -> Dict[str, Any]:
-        
 
-        def truncate_evidences_in_items(items: Optional[List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+        def truncate_evidences_in_items(
+            items: Optional[List[Dict[str, Any]]]
+        ) -> List[Dict[str, Any]]:
             if not items:
                 return []
             result = []
@@ -129,13 +130,19 @@ class ProfileMemoryMerger:
             "user_id": profile.user_id,
             "user_name": profile.user_name or "",
             "user_goal": truncate_evidences_in_items(profile.user_goal),
-            "working_habit_preference": truncate_evidences_in_items(profile.working_habit_preference),
+            "working_habit_preference": truncate_evidences_in_items(
+                profile.working_habit_preference
+            ),
             "interests": truncate_evidences_in_items(profile.interests),
             "hard_skills": truncate_evidences_in_items(profile.hard_skills),
             "soft_skills": truncate_evidences_in_items(profile.soft_skills),
             "personality": truncate_evidences_in_items(profile.personality),
-            "way_of_decision_making": truncate_evidences_in_items(profile.way_of_decision_making),
-            "work_responsibility": truncate_evidences_in_items(profile.work_responsibility),
+            "way_of_decision_making": truncate_evidences_in_items(
+                profile.way_of_decision_making
+            ),
+            "work_responsibility": truncate_evidences_in_items(
+                profile.work_responsibility
+            ),
             "tendency": truncate_evidences_in_items(profile.tendency),
             "projects_participated": [
                 project_to_dict(project)
@@ -144,9 +151,7 @@ class ProfileMemoryMerger:
         }
 
     async def merge_group_profiles(
-        self,
-        group_profiles: List[ProfileMemory],
-        user_id: str,
+        self, group_profiles: List[ProfileMemory], user_id: str
     ) -> ProfileMemory:
         """
         Merge multiple ProfileMemory instances from different groups for a single user.
@@ -172,8 +177,10 @@ class ProfileMemoryMerger:
             if profile is not None and profile.user_id == user_id:
                 all_matching_profiles.append(profile)
                 # Filter profiles for most fields (exclude is_important=False)
-                if (profile.group_importance_evidence is None
-                    or profile.group_importance_evidence.is_important is True):
+                if (
+                    profile.group_importance_evidence is None
+                    or profile.group_importance_evidence.is_important is True
+                ):
                     important_profiles.append(profile)
 
         if not all_matching_profiles:
@@ -182,7 +189,9 @@ class ProfileMemoryMerger:
             raise ValueError(error_msg)
 
         # Use important_profiles if available, otherwise fall back to all profiles
-        matching_profiles = important_profiles if important_profiles else all_matching_profiles
+        matching_profiles = (
+            important_profiles if important_profiles else all_matching_profiles
+        )
 
         # Extract all profiles' data for merging
         base_profile = matching_profiles[0]
@@ -231,8 +240,7 @@ class ProfileMemoryMerger:
         merged_projects = None
         for profile in all_matching_profiles:
             merged_projects = merge_projects_participated(
-                merged_projects,
-                profile.projects_participated
+                merged_projects, profile.projects_participated
             )
 
         # Merge reasoning_parts fields
@@ -251,10 +259,11 @@ class ProfileMemoryMerger:
                 user_name = profile.user_name
                 break
 
-
         # Collect all group_ids
         group_ids = [p.group_id for p in matching_profiles if p.group_id]
-        merged_group_id = ",".join(group_ids) if group_ids else base_profile.group_id or ""
+        merged_group_id = (
+            ",".join(group_ids) if group_ids else base_profile.group_id or ""
+        )
 
         # Get the most recent timestamp and ori_event_id_list
         timestamp = base_profile.timestamp

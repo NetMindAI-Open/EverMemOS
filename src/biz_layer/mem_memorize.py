@@ -5,28 +5,9 @@ import json
 import traceback
 from memory_layer.memory_manager import MemorizeRequest, MemorizeOfflineRequest
 from memory_layer.memory_manager import MemoryManager
-from memory_layer.types import (
-    MemoryType,
-    MemCell,
-    Memory,
-    RawDataType,
-    SemanticMemoryItem,
-)
+from api_specs.types import MemoryType, MemCell, Memory, RawDataType, SemanticMemoryItem
 from memory_layer.memory_extractor.event_log_extractor import EventLog
-from memory_layer.memcell_extractor.base_memcell_extractor import RawData
-from infra_layer.adapters.out.persistence.document.memory.memcell import DataTypeEnum
-from memory_layer.memory_extractor.profile_memory_extractor import (
-    ProfileMemory,
-    ProfileMemoryExtractor,
-    ProfileMemoryExtractRequest,
-    ProfileMemoryMerger,
-    ProjectInfo,
-)
-from memory_layer.memory_extractor.group_profile_memory_extractor import (
-    GroupProfileMemoryExtractor,
-    GroupProfileMemoryExtractRequest,
-    GroupProfileMemory,
-)
+from memory_layer.memory_extractor.profile_memory_extractor import ProfileMemory
 from core.di import get_bean_by_type
 from component.redis_provider import RedisProvider
 from infra_layer.adapters.out.persistence.repository.episodic_memory_raw_repository import (
@@ -54,7 +35,7 @@ from infra_layer.adapters.out.persistence.repository.group_profile_raw_repositor
     GroupProfileRawRepository,
 )
 from biz_layer.conversation_data_repo import ConversationDataRepository
-from memory_layer.types import RawDataType
+from api_specs.types import RawDataType
 from typing import List, Dict, Optional, Any
 from dataclasses import dataclass
 import uuid

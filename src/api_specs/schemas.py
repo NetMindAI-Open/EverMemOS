@@ -6,8 +6,8 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, TYPE_CHECKING
 from memory_layer.memory_manager import MemorizeRequest
 
 if TYPE_CHECKING:
-    from .dtos.memory_query import FetchMemRequest
-    from .dtos.memory_query import RetrieveMemRequest
+    from api_specs.dtos.memory_query import FetchMemRequest
+    from api_specs.dtos.memory_query import RetrieveMemRequest
 
 """
 本文件中的各类RawData结构是需要与Memorize方法的输入结构一致

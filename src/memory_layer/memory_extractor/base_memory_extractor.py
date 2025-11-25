@@ -8,9 +8,8 @@ from boundary detection results (BoundaryResult).
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import List, Optional
-import uuid
 
-from ..types import MemoryType, Memory, MemCell
+from api_specs.types import MemoryType, Memory, MemCell
 
 
 @dataclass
@@ -56,10 +55,6 @@ class MemoryExtractor(ABC):
             MemoryExtractionResult if extraction is successful, None otherwise
         """
         pass
-
-    def _generate_memory_id(self) -> str:
-        """Generate a unique memory ID."""
-        return str(uuid.uuid4())
 
     def __str__(self) -> str:
         """String representation of the extractor."""

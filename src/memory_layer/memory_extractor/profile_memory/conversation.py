@@ -12,15 +12,18 @@ from core.observation.logger import get_logger
 
 # 使用动态语言提示词导入（根据 MEMORY_LANGUAGE 环境变量自动选择）
 from ...prompts import CONVERSATION_PROFILE_EVIDENCE_COMPLETION_PROMPT
-from ...types import MemCell
-from .types import GroupImportanceEvidence, ImportanceEvidence, ProfileMemoryExtractRequest
+from api_specs.types import MemCell
+from api_specs.profile_memory.types import (
+    GroupImportanceEvidence,
+    ImportanceEvidence,
+    ProfileMemoryExtractRequest,
+)
 
 logger = get_logger(__name__)
 
 
 def extract_user_mapping_from_memcells(
-    memcells: Iterable[MemCell],
-    old_memory_list: Optional[Iterable[Any]] = None,
+    memcells: Iterable[MemCell], old_memory_list: Optional[Iterable[Any]] = None
 ) -> Dict[str, str]:
     """Extract user_id to user_name mapping from memcells and old memories.
 
@@ -60,10 +63,7 @@ def extract_user_mapping_from_memcells(
 
 
 def _append_user_ids_to_content(
-    content: Any,
-    refer_list: Any,
-    *,
-    use_at_symbol: bool = True,
+    content: Any, refer_list: Any, *, use_at_symbol: bool = True
 ) -> Any:
     """Generic function to append user IDs to name mentions in content.
 
@@ -112,8 +112,7 @@ def _append_user_ids_to_content(
 
         # Apply the substitution
         updated_content, count = pattern.subn(
-            lambda match: replacement,
-            updated_content,
+            lambda match: replacement, updated_content
         )
         if count:
             processed_names.add(name)
@@ -132,8 +131,7 @@ def append_user_ids_to_names(content: Any, refer_list: Any) -> Any:
 
 
 def build_conversation_text(
-    memcell: MemCell,
-    user_id_to_name: Dict[str, str],
+    memcell: MemCell, user_id_to_name: Dict[str, str]
 ) -> Tuple[str, Optional[str]]:
     """Convert raw data from a memcell into formatted conversation text.
 
@@ -157,11 +155,10 @@ def build_conversation_text(
         if not speaker_name and speaker_id:
             speaker_name = user_id_to_name.get(str(speaker_id), "")
 
-        speaker = f"{speaker_name}(user_id:{speaker_id})" if speaker_id else speaker_name
-        content = append_refer_user_ids(
-            data.get("content"),
-            data.get("referList"),
+        speaker = (
+            f"{speaker_name}(user_id:{speaker_id})" if speaker_id else speaker_name
         )
+        content = append_refer_user_ids(data.get("content"), data.get("referList"))
         timestamp = data.get("timestamp")
 
         if timestamp:
@@ -177,8 +174,7 @@ def build_conversation_text(
 
 
 def build_episode_text(
-    memcell: MemCell,
-    user_id_to_name: Dict[str, str],
+    memcell: MemCell, user_id_to_name: Dict[str, str]
 ) -> Tuple[str, Optional[str]]:
     """Convert episode from a memcell into formatted text with user_id annotations.
 
@@ -212,7 +208,10 @@ def build_episode_text(
 
     # Format with timestamp and event_id
     timestamp = getattr(memcell, "timestamp", None)
-    return f"[{timestamp}][episode_id:{event_id_str}] {annotated_content}", event_id_str or None
+    return (
+        f"[{timestamp}][episode_id:{event_id_str}] {annotated_content}",
+        event_id_str or None,
+    )
 
 
 def annotate_relative_dates(text: str, base_date: Optional[str] = None) -> str:
@@ -283,7 +282,9 @@ def annotate_relative_dates(text: str, base_date: Optional[str] = None) -> str:
         r"\b(today|tomorrow|yesterday|this week|last week|next week|this month|last month|next month)\b",
         re.IGNORECASE,
     )
-    chinese_pattern = re.compile("(今天|明天|昨天|本周|这周|上周|下周|本月|这个月|上个月|下个月)")
+    chinese_pattern = re.compile(
+        "(今天|明天|昨天|本周|这周|上周|下周|本月|这个月|上个月|下个月)"
+    )
 
     def english_repl(match: re.Match[str]) -> str:
         original = match.group(0)
@@ -311,7 +312,9 @@ def annotate_relative_dates(text: str, base_date: Optional[str] = None) -> str:
     return updated_text
 
 
-def extract_group_important_info(memcells: Iterable[MemCell], group_id: str) -> Dict[str, Any]:
+def extract_group_important_info(
+    memcells: Iterable[MemCell], group_id: str
+) -> Dict[str, Any]:
     """Aggregate statistics used to determine user importance within a group."""
     group_data = {
         "group_id": group_id,
@@ -429,16 +432,12 @@ def build_profile_prompt(
 
 
 def build_evidence_completion_prompt(
-    conversation_text: str,
-    profiles_without_evidences: List[Dict[str, Any]],
+    conversation_text: str, profiles_without_evidences: List[Dict[str, Any]]
 ) -> str:
     """Construct the evidence completion prompt for a batch of user profiles."""
-    return (
-        CONVERSATION_PROFILE_EVIDENCE_COMPLETION_PROMPT.replace(
-            "{conversation}",
-            conversation_text,
-        ).replace(
-            "{user_profiles_without_evidences}",
-            json.dumps(profiles_without_evidences, ensure_ascii=False),
-        )
+    return CONVERSATION_PROFILE_EVIDENCE_COMPLETION_PROMPT.replace(
+        "{conversation}", conversation_text
+    ).replace(
+        "{user_profiles_without_evidences}",
+        json.dumps(profiles_without_evidences, ensure_ascii=False),
     )

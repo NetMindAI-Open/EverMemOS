@@ -15,7 +15,7 @@ from infra_layer.adapters.out.search.milvus.memory.event_log_collection import (
 from infra_layer.adapters.out.persistence.document.memory.event_log_record import (
     EventLogRecord as MongoEventLogRecord,
 )
-from memory_layer.types import RawDataType
+from api_specs.types import RawDataType
 
 logger = get_logger(__name__)
 
@@ -23,7 +23,7 @@ logger = get_logger(__name__)
 class EventLogMilvusConverter(BaseMilvusConverter[EventLogCollection]):
     """
     事件日志 Milvus 转换器
-    
+
     将 MongoDB 的EventLog文档转换为 Milvus Collection 实体。
     使用独立的 EventLogCollection，支持个人和群组事件日志。
     """
@@ -45,22 +45,21 @@ class EventLogMilvusConverter(BaseMilvusConverter[EventLogCollection]):
         try:
             # 转换时间戳
             timestamp = (
-                int(source_doc.timestamp.timestamp())
-                if source_doc.timestamp
-                else 0
+                int(source_doc.timestamp.timestamp()) if source_doc.timestamp else 0
             )
-            
+
             # 构建搜索内容
             search_content = cls._build_search_content(source_doc)
-            
-            
+
             # 创建 Milvus 实体字典
             milvus_entity = {
                 # 基础标识字段
                 "id": str(source_doc.id),  # 使用 Beanie 的 id 属性
                 "user_id": source_doc.user_id or "",
                 "group_id": source_doc.group_id or "",
-                "participants": source_doc.participants if source_doc.participants else [],
+                "participants": (
+                    source_doc.participants if source_doc.participants else []
+                ),
                 "parent_episode_id": source_doc.parent_episode_id or "",
                 # 事件类型和时间字段
                 "event_type": source_doc.event_type or RawDataType.CONVERSATION.value,
@@ -69,7 +68,9 @@ class EventLogMilvusConverter(BaseMilvusConverter[EventLogCollection]):
                 "atomic_fact": source_doc.atomic_fact,
                 "search_content": search_content,
                 # 详细信息 JSON
-                "metadata": json.dumps(cls._build_detail(source_doc), ensure_ascii=False),
+                "metadata": json.dumps(
+                    cls._build_detail(source_doc), ensure_ascii=False
+                ),
                 # 审计字段
                 "created_at": (
                     int(source_doc.created_at.timestamp())
@@ -94,11 +95,8 @@ class EventLogMilvusConverter(BaseMilvusConverter[EventLogCollection]):
     @classmethod
     def _build_detail(cls, source_doc: MongoEventLogRecord) -> Dict[str, Any]:
         """构建详细信息字典"""
-        detail = {
-            "vector_model": source_doc.vector_model,
-            "extend": source_doc.extend,
-        }
-        
+        detail = {"vector_model": source_doc.vector_model, "extend": source_doc.extend}
+
         # 过滤掉 None 值
         return {k: v for k, v in detail.items() if v is not None}
 
@@ -106,9 +104,8 @@ class EventLogMilvusConverter(BaseMilvusConverter[EventLogCollection]):
     def _build_search_content(source_doc: MongoEventLogRecord) -> str:
         """构建搜索内容（JSON 列表格式）"""
         text_content = []
-        
+
         if source_doc.atomic_fact:
             text_content.append(source_doc.atomic_fact)
-        
-        return json.dumps(text_content, ensure_ascii=False)
 
+        return json.dumps(text_content, ensure_ascii=False)

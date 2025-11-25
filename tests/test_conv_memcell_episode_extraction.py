@@ -13,7 +13,7 @@ from pathlib import Path
 from datetime import datetime
 from typing import List, Dict, Any
 
-from memory_layer.types import RawDataType, MemCell
+from api_specs.types import RawDataType, MemCell
 from memory_layer.memcell_extractor.base_memcell_extractor import RawData
 from memory_layer.memcell_extractor.conv_memcell_extractor import (
     ConvMemCellExtractor,

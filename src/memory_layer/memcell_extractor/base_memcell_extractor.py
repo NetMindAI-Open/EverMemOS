@@ -11,7 +11,7 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime
 import json
 from memory_layer.llm.llm_provider import LLMProvider
-from memory_layer.types import RawDataType, Memory, MemCell
+from api_specs.types import RawDataType, Memory, MemCell
 import re
 
 try:
@@ -271,9 +271,7 @@ class StatusResult:
 
 
 class MemCellExtractor(ABC):
-    def __init__(
-        self, raw_data_type: RawDataType, llm_provider=LLMProvider
-    ):
+    def __init__(self, raw_data_type: RawDataType, llm_provider=LLMProvider):
         self.raw_data_type = raw_data_type
         self._llm_provider = llm_provider
 

@@ -17,12 +17,12 @@ from core.di import get_bean_by_type
 from core.interface.controller.base_controller import BaseController, get, post, patch
 from core.constants.errors import ErrorCode, ErrorStatus
 from agentic_layer.memory_manager import MemoryManager
-from agentic_layer.converter import (
+from api_specs.converter import (
     _handle_conversation_format,
     convert_dict_to_fetch_mem_request,
     convert_dict_to_retrieve_mem_request,
 )
-from agentic_layer.dtos.memory_query import ConversationMetaRequest, UserDetail
+from api_specs.dtos.memory_query import ConversationMetaRequest, UserDetail
 from infra_layer.adapters.input.api.mapper.group_chat_converter import (
     convert_simple_message_to_memorize_input,
 )

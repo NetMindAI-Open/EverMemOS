@@ -6,15 +6,18 @@ from typing import Any, Dict, Iterable, List, Optional, Set
 
 from core.observation.logger import get_logger
 
-from ...types import Memory, MemoryType, RawDataType
+from api_specs.types import Memory, MemoryType, RawDataType
 from .project_helpers import (
     convert_projects_to_dataclass,
     merge_projects_participated,
     project_to_dict,
 )
 from .skill_helpers import merge_skill_lists, normalize_skills_with_evidence
-from .types import ProfileMemory
-from .value_helpers import extract_values_with_evidence, merge_value_with_evidences_lists
+from api_specs.profile_memory.types import ProfileMemory
+from .value_helpers import (
+    extract_values_with_evidence,
+    merge_value_with_evidences_lists,
+)
 
 logger = get_logger(__name__)
 
@@ -42,8 +45,7 @@ def remove_evidences_from_profile(profile_obj: Dict[str, Any]) -> Dict[str, Any]
 
 
 def accumulate_old_memory_entry(
-    memory: Memory,
-    participants_profile_list: List[Dict[str, Any]],
+    memory: Memory, participants_profile_list: List[Dict[str, Any]]
 ) -> None:
     """Convert legacy Memory objects into prompt-ready dictionaries."""
     try:
@@ -90,9 +92,7 @@ def accumulate_old_memory_entry(
         projects = getattr(memory, "projects_participated", None)
         if projects:
             project_payload = [
-                project_to_dict(project)
-                for project in projects
-                if project is not None
+                project_to_dict(project) for project in projects if project is not None
             ]
             if project_payload:
                 profile_obj["projects_participated"] = project_payload
@@ -120,8 +120,7 @@ def profile_payload_to_memory(
     extracted_user_name = profile_data.get("user_name", "")
     if not extracted_user_id:
         logger.debug(
-            "LLM generated user %s has no user_id, skipping",
-            extracted_user_name,
+            "LLM generated user %s has no user_id, skipping", extracted_user_name
         )
         return None
 
@@ -243,10 +242,7 @@ def profile_payload_to_memory(
 
 
 def merge_single_profile(
-    existing: ProfileMemory,
-    new: ProfileMemory,
-    *,
-    group_id: str,
+    existing: ProfileMemory, new: ProfileMemory, *, group_id: str
 ) -> ProfileMemory:
     """Merge two ProfileMemory objects with the same user id."""
     merged_hard_skills = merge_skill_lists(existing.hard_skills, new.hard_skills)
@@ -271,9 +267,15 @@ def merge_single_profile(
         ),
     )
 
-    merged_projects = merge_projects_participated(existing.projects_participated, new.projects_participated)
+    merged_projects = merge_projects_participated(
+        existing.projects_participated, new.projects_participated
+    )
 
-    output_reasoning = new.output_reasoning if new.output_reasoning is not None else existing.output_reasoning
+    output_reasoning = (
+        new.output_reasoning
+        if new.output_reasoning is not None
+        else existing.output_reasoning
+    )
 
     return ProfileMemory(
         memory_type=MemoryType.PROFILE,
@@ -354,7 +356,9 @@ def merge_profiles(
             or None,
             user_goal=participant_profile.get("user_goal"),
             work_responsibility=participant_profile.get("work_responsibility"),
-            working_habit_preference=participant_profile.get("working_habit_preference"),
+            working_habit_preference=participant_profile.get(
+                "working_habit_preference"
+            ),
             interests=participant_profile.get("interests"),
             tendency=participant_profile.get("tendency"),
             type=RawDataType.CONVERSATION,
@@ -366,9 +370,7 @@ def merge_profiles(
         if user_id in merged_dict:
             existing_profile = merged_dict[user_id]
             merged_dict[user_id] = merge_single_profile(
-                existing_profile,
-                new_profile,
-                group_id=group_id,
+                existing_profile, new_profile, group_id=group_id
             )
         else:
             merged_dict[user_id] = new_profile
@@ -377,17 +379,13 @@ def merge_profiles(
 
 
 def _merge_value_fields(
-    existing: ProfileMemory,
-    new: ProfileMemory,
-    *,
-    field_names: Iterable[str],
+    existing: ProfileMemory, new: ProfileMemory, *, field_names: Iterable[str]
 ) -> Dict[str, Optional[List[Dict[str, Any]]]]:
     """Merge multiple value-based fields and return a mapping."""
     merged: Dict[str, Optional[List[Dict[str, Any]]]] = {}
     for field in field_names:
         merged[field] = merge_value_with_evidences_lists(
-            getattr(existing, field, None),
-            getattr(new, field, None),
+            getattr(existing, field, None), getattr(new, field, None)
         )
     return merged
 

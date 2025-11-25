@@ -15,7 +15,7 @@ async def test_convert_rest_to_request():
     print("🚀 开始测试 convert_rest_to_request 函数\n")
 
     try:
-        from agentic_layer.converter import convert_rest_to_request
+        from api_specs.converter import convert_rest_to_request
 
         print("✅ convert_rest_to_request 导入成功\n")
     except Exception as e:

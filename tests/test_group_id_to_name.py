@@ -25,7 +25,7 @@ from infra_layer.adapters.out.persistence.repository.tanka.chat_group_raw_reposi
     ChatGroupRawRepository,
 )
 from infra_layer.adapters.out.persistence.document.tanka.chat_group import ChatGroup
-from memory_layer.types import RawDataType
+from api_specs.types import RawDataType
 from core.di import get_bean_by_type
 from core.observation.logger import get_logger
 from beanie import PydanticObjectId

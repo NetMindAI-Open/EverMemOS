@@ -35,7 +35,7 @@ from memory_layer.memcell_extractor.base_memcell_extractor import (
 )
 from memory_layer.llm.llm_provider import LLMProvider
 from memory_layer.llm.openai_provider import OpenAIProvider
-from memory_layer.types import RawDataType
+from api_specs.types import RawDataType
 from infra_layer.adapters.input.mq.mapper.linkdoc_mapper import (
     convert_notion_document_to_raw_data,
     convert_dropbox_document_to_raw_data,

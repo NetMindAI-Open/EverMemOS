@@ -49,9 +49,9 @@ from infra_layer.adapters.out.persistence.repository.semantic_memory_record_raw_
     SemanticMemoryRecordRawRepository,
 )
 
-from .dtos.memory_query import FetchMemResponse
+from api_specs.dtos.memory_query import FetchMemResponse
 
-from .memory_models import (
+from api_specs.memory_models import (
     MemoryType,
     MemoryModel,
     BaseMemoryModel,

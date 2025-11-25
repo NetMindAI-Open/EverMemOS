@@ -11,11 +11,11 @@ import time
 from typing import Dict, Any
 from dataclasses import dataclass
 
-from memory_layer.types import Memory, RawDataType
+from api_specs.types import Memory, RawDataType
 from biz_layer.mem_memorize import memorize
 from memory_layer.memory_manager import MemorizeRequest
 from .fetch_mem_service import get_fetch_memory_service
-from .dtos.memory_query import (
+from api_specs.dtos.memory_query import (
     FetchMemRequest,
     FetchMemResponse,
     RetrieveMemRequest,
@@ -44,7 +44,7 @@ from infra_layer.adapters.out.search.repository.episodic_memory_milvus_repositor
 )
 from .vectorize_service import get_vectorize_service
 from .rerank_service import get_rerank_service
-from agentic_layer.memory_models import MemoryType
+from api_specs.memory_models import MemoryType
 
 logger = logging.getLogger(__name__)
 
@@ -144,7 +144,7 @@ class MemoryManager:
                 raise ValueError("retrieve_mem_request is required for retrieve_mem")
 
             # 根据 retrieve_method 分发到不同的检索方法
-            from .memory_models import RetrieveMethod
+            from api_specs.memory_models import RetrieveMethod
 
             retrieve_method = retrieve_mem_request.retrieve_method
 
@@ -1231,7 +1231,6 @@ class MemoryManager:
                 user_id=user_id, group_id=group_id, top_k=top_k, start_time=start_time
             )
 
-
         return await self._retrieve_from_vector_stores(
             query=query,
             user_id=user_id,  # 直接传递,不修改
@@ -1307,9 +1306,10 @@ class MemoryManager:
                 # 注意：为了确保能检索到足够的候选，增加 limit
                 # Milvus 限制: topk 最大为 16384
                 # 为了解决 EventLog/SemanticMemory 只返回1条的问题,大幅增加 limit
-                retrieval_limit = min(max(top_k * 200, 1000), 16384)  # 至少 1000 条,最多 16384 条
+                retrieval_limit = min(
+                    max(top_k * 200, 1000), 16384
+                )  # 至少 1000 条,最多 16384 条
 
-                
                 # 根据 data_source 调用不同的 vector_search 参数
                 milvus_kwargs = dict(
                     query_vector=query_vec,
@@ -1375,7 +1375,7 @@ class MemoryManager:
 
                 raw_query_words = list(jieba.cut(query))
                 query_words = filter_stopwords(raw_query_words, min_length=2)
-                
+
                 logger.debug(
                     f"BM25 检索: data_source={data_source}, query={query}, "
                     f"raw_query_words={raw_query_words}, query_words={query_words}"
@@ -1384,7 +1384,7 @@ class MemoryManager:
                 # 调用 ES 检索
                 # 注意：为了确保能检索到足够的候选，增加 size
                 retrieval_size = max(top_k * 10, 100)  # 至少 100 条候选
-                
+
                 es_kwargs = dict(
                     query=query_words,
                     user_id=user_id,

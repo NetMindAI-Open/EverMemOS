@@ -318,7 +318,7 @@ class GroupProfileDataProcessor:
         Returns separate fields for easier processing.
         """
         from datetime import datetime
-        from ...types import MemoryType
+        from api_specs.types import MemoryType
 
         if not old_memory_list:
             return None

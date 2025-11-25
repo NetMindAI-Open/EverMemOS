@@ -7,8 +7,11 @@ from typing import Any, Dict, Iterable, List, Optional, Set
 
 from core.observation.logger import get_logger
 
-from .types import ProjectInfo
-from .value_helpers import extract_values_with_evidence, merge_value_with_evidences_lists
+from api_specs.profile_memory.types import ProjectInfo
+from .value_helpers import (
+    extract_values_with_evidence,
+    merge_value_with_evidences_lists,
+)
 
 logger = get_logger(__name__)
 
@@ -51,10 +54,24 @@ def convert_projects_to_dataclass(
                     project_id=project_data.project_id,
                     project_name=project_data.project_name,
                     entry_date=project_data.entry_date,
-                    subtasks=list(project_data.subtasks) if project_data.subtasks else None,
-                    user_objective=list(project_data.user_objective) if project_data.user_objective else None,
-                    contributions=list(project_data.contributions) if project_data.contributions else None,
-                    user_concerns=list(project_data.user_concerns) if project_data.user_concerns else None,
+                    subtasks=(
+                        list(project_data.subtasks) if project_data.subtasks else None
+                    ),
+                    user_objective=(
+                        list(project_data.user_objective)
+                        if project_data.user_objective
+                        else None
+                    ),
+                    contributions=(
+                        list(project_data.contributions)
+                        if project_data.contributions
+                        else None
+                    ),
+                    user_concerns=(
+                        list(project_data.user_concerns)
+                        if project_data.user_concerns
+                        else None
+                    ),
                 )
             )
             continue
@@ -116,12 +133,20 @@ def merge_projects_participated(
             project_name=project.project_name,
             entry_date=project.entry_date,
             subtasks=list(project.subtasks) if project.subtasks else None,
-            user_objective=list(project.user_objective) if project.user_objective else None,
-            contributions=list(project.contributions) if project.contributions else None,
-            user_concerns=list(project.user_concerns) if project.user_concerns else None,
+            user_objective=(
+                list(project.user_objective) if project.user_objective else None
+            ),
+            contributions=(
+                list(project.contributions) if project.contributions else None
+            ),
+            user_concerns=(
+                list(project.user_concerns) if project.user_concerns else None
+            ),
         )
 
-    merged_projects: List[ProjectInfo] = [clone_project(project) for project in existing_projects or []]
+    merged_projects: List[ProjectInfo] = [
+        clone_project(project) for project in existing_projects or []
+    ]
 
     for project in incoming_projects or []:
         match: Optional[ProjectInfo] = None
@@ -137,18 +162,17 @@ def merge_projects_participated(
 
         if match:
             match.entry_date = match.entry_date or project.entry_date
-            match.subtasks = merge_value_with_evidences_lists(match.subtasks, project.subtasks)
+            match.subtasks = merge_value_with_evidences_lists(
+                match.subtasks, project.subtasks
+            )
             match.user_objective = merge_value_with_evidences_lists(
-                match.user_objective,
-                project.user_objective,
+                match.user_objective, project.user_objective
             )
             match.contributions = merge_value_with_evidences_lists(
-                match.contributions,
-                project.contributions,
+                match.contributions, project.contributions
             )
             match.user_concerns = merge_value_with_evidences_lists(
-                match.user_concerns,
-                project.user_concerns,
+                match.user_concerns, project.user_concerns
             )
         else:
             merged_projects.append(clone_project(project))
@@ -164,12 +188,15 @@ def _normalize_project_field(
     conversation_date_map: Optional[Dict[str, str]],
 ) -> List[Dict[str, Any]]:
     if isinstance(value, list) and value:
-        return extract_values_with_evidence(
-            value,
-            field_name=field_name,
-            valid_conversation_ids=valid_conversation_ids,
-            conversation_date_map=conversation_date_map,
-        ) or []
+        return (
+            extract_values_with_evidence(
+                value,
+                field_name=field_name,
+                valid_conversation_ids=valid_conversation_ids,
+                conversation_date_map=conversation_date_map,
+            )
+            or []
+        )
     return []
 
 
@@ -183,15 +210,14 @@ def _normalize_entry_date(value: Any) -> str:
     try:
         datetime.strptime(entry_date, "%Y-%m-%d")
     except ValueError:
-        logger.debug(
-            "Invalid entry_date `%s`; resetting to empty",
-            value,
-        )
+        logger.debug("Invalid entry_date `%s`; resetting to empty", value)
         return ""
     return entry_date
 
 
-def filter_project_items_by_type(projects_participated: Optional[List[Dict[str, Any]]]) -> Optional[List[Dict[str, Any]]]:
+def filter_project_items_by_type(
+    projects_participated: Optional[List[Dict[str, Any]]]
+) -> Optional[List[Dict[str, Any]]]:
     """
     Filter subtasks and contributions in projects_participated by type.
 
@@ -236,7 +262,9 @@ def filter_project_items_by_type(projects_participated: Optional[List[Dict[str, 
                             item_type,
                             item.get("evidences"),
                         )
-            filtered_project["subtasks"] = filtered_subtasks if filtered_subtasks else None
+            filtered_project["subtasks"] = (
+                filtered_subtasks if filtered_subtasks else None
+            )
 
         # Filter contributions - only keep type='result'
         contributions = project.get("contributions")
@@ -257,7 +285,9 @@ def filter_project_items_by_type(projects_participated: Optional[List[Dict[str, 
                             item_type,
                             item.get("evidences"),
                         )
-            filtered_project["contributions"] = filtered_contributions if filtered_contributions else None
+            filtered_project["contributions"] = (
+                filtered_contributions if filtered_contributions else None
+            )
 
         filtered_projects.append(filtered_project)
 

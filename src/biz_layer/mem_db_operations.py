@@ -11,8 +11,7 @@
 
 import time
 from memory_layer.memory_manager import MemorizeRequest
-from memory_layer.types import MemoryType, MemCell, Memory, RawDataType
-from memory_layer.memcell_extractor.base_memcell_extractor import RawData
+from api_specs.types import MemCell, RawDataType
 from memory_layer.memory_extractor.profile_memory_extractor import ProfileMemory
 from memory_layer.memory_extractor.group_profile_memory_extractor import (
     GroupProfileMemory,
@@ -65,9 +64,10 @@ from infra_layer.adapters.out.persistence.document.memory.semantic_memory_record
 from infra_layer.adapters.out.persistence.document.memory.event_log_record import (
     EventLogRecord,
 )
-from memory_layer.types import RawDataType
+from api_specs.types import RawDataType
+
 logger = get_logger(__name__)
-import uuid
+
 # ==================== 时间处理函数 ====================
 
 
@@ -318,7 +318,6 @@ def _convert_semantic_memory_to_doc(
     Returns:
         SemanticMemoryRecord: 数据库文档格式的语义记忆对象
     """
-    
 
     if current_time is None:
         current_time = get_now_with_timezone()
