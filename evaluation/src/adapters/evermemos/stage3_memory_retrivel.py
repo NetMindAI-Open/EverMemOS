@@ -648,14 +648,14 @@ async def agentic_retrieval(
         metadata["total_latency_ms"] = (time.time() - start_time) * 1000
         return [], metadata
     
-    # Rerank Top 20 to Top 5 for Sufficiency Check
-    print(f"  [Rerank] Reranking Top 20 to get Top 5 for sufficiency check...")
+    # Rerank Top 20 to Top 10 for Sufficiency Check
+    print(f"  [Rerank] Reranking Top 20 to get Top 10 for sufficiency check...")
     
     if config.use_reranker:
-        reranked_top5 = await reranker_search(
+        reranked_top10 = await reranker_search(
             query=query,
             results=round1_top20,
-            top_n=5,
+            top_n=10,
             reranker_instruction=config.reranker_instruction,
             batch_size=config.reranker_batch_size,
             max_retries=config.reranker_max_retries,
@@ -664,35 +664,38 @@ async def agentic_retrieval(
             fallback_threshold=config.reranker_fallback_threshold,
             config=config,
         )
-        metadata["round1_reranked_count"] = len(reranked_top5)
-        print(f"  [Rerank] Got Top 5 for sufficiency check")
+        metadata["round1_reranked_count"] = len(reranked_top10)
+        print(f"  [Rerank] Got Top 10 for sufficiency check")
     else:
-        # If not using reranker, take first 5 directly
-        reranked_top5 = round1_top20[:5]
-        metadata["round1_reranked_count"] = 5
-        print(f"  [No Rerank] Using original Top 5 for sufficiency check")
+        # If not using reranker, take first 10 directly
+        reranked_top10 = round1_top20[:10]
+        metadata["round1_reranked_count"] = 10
+        print(f"  [No Rerank] Using original Top 10 for sufficiency check")
     
-    if not reranked_top5:
+    if not reranked_top10:
         print(f"  [Warning] Reranking failed, falling back to original Top 20")
         metadata["total_latency_ms"] = (time.time() - start_time) * 1000
         return round1_top20, metadata
     
     # LLM Sufficiency Check
-    print(f"  [LLM] Checking sufficiency on Top 5...")
+    print(f"  [LLM] Checking sufficiency on Top 10...")
     
-    is_sufficient, reasoning, missing_info = await agentic_utils.check_sufficiency(
+    is_sufficient, reasoning, missing_info, key_info = await agentic_utils.check_sufficiency(
         query=query,
-        results=reranked_top5,  # Use reranked Top 5
+        results=reranked_top10,  # Use reranked Top 10
         llm_provider=llm_provider,  # Use LLMProvider
         llm_config=llm_config,
-        max_docs=5  # Explicitly check only 5 documents
+        max_docs=10  # Explicitly check only 10 documents
     )
     
     metadata["is_sufficient"] = is_sufficient
     metadata["reasoning"] = reasoning
+    metadata["key_information_found"] = key_info  # 新增：记录已找到的关键信息
     
     print(f"  [LLM] Result: {'✅ Sufficient' if is_sufficient else '❌ Insufficient'}")
     print(f"  [LLM] Reasoning: {reasoning}")
+    if key_info:  # 新增：打印已找到的关键信息
+        print(f"  [LLM] Key Info Found: {', '.join(key_info)}")
     
     # If sufficient: return original Round 1 Top 20
     if is_sufficient:
@@ -720,11 +723,12 @@ async def agentic_retrieval(
         # Generate 2-3 complementary queries
         refined_queries, query_strategy = await agentic_utils.generate_multi_queries(
             original_query=query,
-            results=reranked_top5,  # Based on Top 5 generate improved queries
+            results=reranked_top10,  # Based on Top 10 generate improved queries
             missing_info=missing_info,
             llm_provider=llm_provider,  # Use LLMProvider
             llm_config=llm_config,
-            max_docs=5,
+            key_info=key_info,  # 新增：传入已找到的关键信息
+            max_docs=10,
             num_queries=3  # Expect to generate 3 queries
         )
         
@@ -780,11 +784,12 @@ async def agentic_retrieval(
         
         refined_query = await agentic_utils.generate_refined_query(
             original_query=query,
-            results=reranked_top5,
+            results=reranked_top10,
             missing_info=missing_info,
             llm_provider=llm_provider,
             llm_config=llm_config,
-            max_docs=5
+            key_info=key_info,  # 新增：传入已找到的关键信息
+            max_docs=10
         )
         
         metadata["refined_query"] = refined_query
