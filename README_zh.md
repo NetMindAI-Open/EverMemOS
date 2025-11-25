@@ -1,16 +1,17 @@
 <div align="center">
 
-  <h1>
-    <img src="figs/logo.png" alt="EverMemOS Logo" height="40" style="vertical-align: middle; margin-right: 12px;"/>
-    EverMemOS
-  </h1>
-  
-   <p><a href="https://evermind-ai.com/" target="_blank" style="color: #4A90E2; text-decoration: none; font-weight: 500;">https://evermind-ai.com/</a></p>
+<h1>
+  <img src="figs/logo.png" alt="EverMemOS Logo" height="40" style="vertical-align: middle; margin-right: 12px;"/>
+  EverMemOS
+</h1>
 
-  
-  <p><strong>每次交流，都由理解驱动</strong> · 企业级智能记忆系统</p>
+<p>
+  <a href="https://everm.ai/" target="_blank">
+    <img alt="Website" src="https://img.shields.io/badge/Website-everm.ai-4A90E2?style=flat-square&logo=link&logoColor=white" />
+  </a>
+</p>
 
-
+<p><strong>每次交流，都由理解驱动</strong> · 企业级智能记忆系统</p>
 
 <p>
   <img alt="Python" src="https://img.shields.io/badge/Python-3.10+-0084FF?style=flat-square&logo=python&logoColor=white" />
@@ -27,7 +28,7 @@
 </p>
 
 <p>
-  <a href="README.md">English</a> | <a href="README_zh.md">简体中文</a> 
+  <a href="README.md">English</a> | <a href="README_zh.md">简体中文</a>
 </p>
 
 </div>
@@ -493,6 +494,7 @@ EverMemOS 提供两种检索模式：**轻量级检索**（快速）和 **Agenti
 | `query` | 是* | 自然语言查询（*profile 数据源时可选） |
 | `user_id` | 否 | 用户 ID |
 | `data_source` | 是 | `episode` / `event_log` / `semantic_memory` / `profile` |
+| `memory_scope` | 是 | `personal`（仅 user_id） / `group`（仅 group_id） / `all`（两者） |
 | `retrieval_mode` | 是 | `embedding` / `bm25` / `rrf`（推荐） |
 | `group_id` | 否 | 群组 ID |
 | `current_time` | 否 | 过滤有效期内的 semantic_memory（格式: YYYY-MM-DD） |
@@ -510,6 +512,7 @@ curl -X POST http://localhost:8001/api/v3/agentic/retrieve_lightweight \
     "query": "用户喜欢什么运动",
     "user_id": "user_001",
     "data_source": "episode",
+    "memory_scope": "personal",
     "retrieval_mode": "rrf"
   }'
 ```
@@ -528,6 +531,7 @@ curl -X POST http://localhost:8001/api/v3/agentic/retrieve_lightweight \
     "query": "讨论项目进展",
     "group_id": "project_team_001",
     "data_source": "episode",
+    "memory_scope": "group",
     "retrieval_mode": "rrf"
   }'
 ```
@@ -730,6 +734,8 @@ Coming soon
 感谢以下项目和社区的灵感和支持：
 
 - [Memos](https://github.com/usememos/memos) - 感谢 Memos 项目提供了一个完善的、标准化的开源笔记服务，为我们的记忆系统设计提供了宝贵的启发。
+
+- [Nemori](https://github.com/nemori-ai/nemori) - 感谢 Nemori 项目提供了一个用于智能体 LLM 工作流的自组织长期记忆系统，为我们的记忆系统设计提供了宝贵的启发。
 
 ---
 

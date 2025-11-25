@@ -5,8 +5,11 @@
   EverMemOS
 </h1>
 
- <p><a href="https://evermind-ai.com/" target="_blank" style="color: #4A90E2; text-decoration: none; font-weight: 500;">https://evermind-ai.com/</a></p>
-
+<p>
+  <a href="https://everm.ai/" target="_blank">
+    <img alt="Website" src="https://img.shields.io/badge/Website-everm.ai-4A90E2?style=flat-square&logo=link&logoColor=white" />
+  </a>
+</p>
 
 <p><strong>Let every interaction be driven by understanding.</strong> · Enterprise-Grade Intelligent Memory System</p>
 
@@ -496,6 +499,7 @@ EverMemOS provides two retrieval modes: **Lightweight** (fast) and **Agentic** (
 | `query` | Yes* | Natural language query (*optional for profile data source) |
 | `user_id` | No | User ID |
 | `data_source` | Yes | `episode` / `event_log` / `semantic_memory` / `profile` |
+| `memory_scope` | Yes | `personal` (user_id only) / `group` (group_id only) / `all` (both) |
 | `retrieval_mode` | Yes | `embedding` / `bm25` / `rrf` (recommended) |
 | `group_id` | No | Group ID |
 | `current_time` | No | Filter valid semantic_memory (format: YYYY-MM-DD) |
@@ -513,6 +517,7 @@ curl -X POST http://localhost:8001/api/v3/agentic/retrieve_lightweight \
     "query": "What sports does the user like?",
     "user_id": "user_001",
     "data_source": "episode",
+    "memory_scope": "personal",
     "retrieval_mode": "rrf"
   }'
 ```
@@ -531,6 +536,7 @@ curl -X POST http://localhost:8001/api/v3/agentic/retrieve_lightweight \
     "query": "Discuss project progress",
     "group_id": "project_team_001",
     "data_source": "episode",
+    "memory_scope": "group",
     "retrieval_mode": "rrf"
   }'
 ```
@@ -736,6 +742,8 @@ This section can include:
 Thanks to the following projects and communities for their inspiration and support:
 
 - [Memos](https://github.com/usememos/memos) - Thank you to the Memos project for providing a comprehensive, standardized open-source note-taking service that has provided valuable inspiration for our memory system design.
+
+- [Nemori](https://github.com/nemori-ai/nemori) - Thank you to the Nemori project for providing a self-organising long-term memory substrate for agentic LLM workflows that has provided valuable inspiration for our memory system design.
 
 ---
 
