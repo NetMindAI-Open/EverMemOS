@@ -304,16 +304,16 @@ class SemanticMemoryExtractor(MemoryExtractor):
                 # 批量计算所有 content 的 embeddings（性能优化）
                 vs = get_vectorize_service()
                 contents = [item['content'] for item in items_to_process]
-                embeddings_batch = await vs.get_embeddings(contents)  # 使用 get_embeddings (List[str])
+                vectors_batch = await vs.get_embeddings(contents)  # 使用 get_embeddings (List[str])
                 
                 # 创建SemanticMemoryItem对象
                 for i, item_data in enumerate(items_to_process):
                     # 处理 embedding：可能是 numpy 数组或已经是列表
-                    embedding = embeddings_batch[i]
-                    if hasattr(embedding, 'tolist'):
-                        embedding = embedding.tolist()
-                    elif not isinstance(embedding, list):
-                        embedding = list(embedding)
+                    vector = vectors_batch[i]
+                    if hasattr(vector, 'tolist'):
+                        vector = vector.tolist()
+                    elif not isinstance(vector, list):
+                        vector = list(vector)
                     
                     memory_item = SemanticMemoryItem(
                         content=item_data['content'],
@@ -322,8 +322,8 @@ class SemanticMemoryExtractor(MemoryExtractor):
                         end_time=item_data['end_time'],
                         duration_days=item_data['duration_days'],
                         source_episode_id=item_data['source_episode_id'],
-                        embedding=embedding,
-                        embedding_model=vs.get_model_name(),
+                        vector=vector,
+                        vector_model=vs.get_model_name(),
                     )
                     semantic_memories.append(memory_item)
 

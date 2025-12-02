@@ -209,14 +209,14 @@ class AgenticV3Controller(BaseController):
             else:
                 # 未检测到边界，消息已累积
                 logger.info("消息已累积，等待边界检测")
-                return {
-                    "status": ErrorStatus.OK.value,
+            return {
+                "status": ErrorStatus.OK.value,
                     "message": "Message queued, awaiting boundary detection",
-                    "result": {
+                "result": {
                         "request_id": None,
                         "status_info": "accumulated",
-                    },
-                }
+                },
+            }
 
         except ValueError as e:
             logger.error("V3 memorize 请求参数错误: %s", e)

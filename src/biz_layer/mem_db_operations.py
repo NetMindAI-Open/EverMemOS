@@ -334,8 +334,8 @@ def _convert_semantic_memory_to_doc(
         group_id=semantic_memory.group_id,
         group_name=semantic_memory.group_name,
         participants=parent_doc.participants,
-        vector=semantic_memory.embedding,
-        vector_model=semantic_memory.embedding_model,
+        vector=semantic_memory.vector,
+        vector_model=semantic_memory.vector_model,
         evidence=semantic_memory.evidence,
         extend={},
     )

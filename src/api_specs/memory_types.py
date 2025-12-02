@@ -211,8 +211,8 @@ class SemanticMemoryItem:
     end_time: Optional[str] = None  # 事件结束时间，格式：YYYY-MM-DD
     duration_days: Optional[int] = None  # 持续时间（天数）
     source_episode_id: Optional[str] = None  # 来源事件ID
-    embedding: Optional[List[float]] = None
-    embedding_model: Optional[str] = None
+    vector: Optional[List[float]] = None
+    vector_model: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -222,6 +222,6 @@ class SemanticMemoryItem:
             "end_time": self.end_time,
             "duration_days": self.duration_days,
             "source_episode_id": self.source_episode_id,
-            "embedding": self.embedding,
-            "embedding_model": self.embedding_model,
+            "vector": self.vector,
+            "vector_model": self.vector_model,
         }

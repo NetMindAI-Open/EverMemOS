@@ -116,7 +116,8 @@ def _clone_semantic_memory_item(raw_item: Any) -> Optional[SemanticMemoryItem]:
             end_time=getattr(raw_item, "end_time", None),
             duration_days=getattr(raw_item, "duration_days", None),
             source_episode_id=getattr(raw_item, "source_episode_id", None),
-            embedding=getattr(raw_item, "embedding", None),
+            vector=getattr(raw_item, "vector", None),
+            vector_model=getattr(raw_item, "vector_model", None),
         )
 
     if isinstance(raw_item, dict):
@@ -127,7 +128,8 @@ def _clone_semantic_memory_item(raw_item: Any) -> Optional[SemanticMemoryItem]:
             end_time=raw_item.get("end_time"),
             duration_days=raw_item.get("duration_days"),
             source_episode_id=raw_item.get("source_episode_id"),
-            embedding=raw_item.get("embedding"),
+            vector=raw_item.get("vector"),
+            vector_model=raw_item.get("vector_model"),
         )
 
     return None
@@ -171,21 +173,25 @@ async def _trigger_clustering(
         from memory_layer.cluster_manager import (
             ClusterManager,
             ClusterManagerConfig,
-            MongoClusterStorage,
         )
         from memory_layer.profile_manager import (
             ProfileManager,
             ProfileManagerConfig,
-            MongoProfileStorage,
+        )
+        from infra_layer.adapters.out.persistence.repository.cluster_state_raw_repository import (
+            ClusterStateRawRepository,
+        )
+        from infra_layer.adapters.out.persistence.repository.user_profile_raw_repository import (
+            UserProfileRawRepository,
         )
         from memory_layer.llm.llm_provider import LLMProvider
         from core.di import get_bean_by_type
         import os
 
-        logger.info(f"[聚类] 正在获取 MongoClusterStorage...")
+        logger.info(f"[聚类] 正在获取 ClusterStateRawRepository...")
         # 获取 MongoDB 存储
-        mongo_storage = get_bean_by_type(MongoClusterStorage)
-        logger.info(f"[聚类] MongoClusterStorage 获取成功: {type(mongo_storage)}")
+        mongo_storage = get_bean_by_type(ClusterStateRawRepository)
+        logger.info(f"[聚类] ClusterStateRawRepository 获取成功: {type(mongo_storage)}")
 
         # 创建 ClusterManager（使用 MongoDB 存储）
         config = ClusterManagerConfig(
@@ -198,8 +204,8 @@ async def _trigger_clustering(
 
         # 创建 ProfileManager 并连接到 ClusterManager
         # 获取 MongoDB Profile 存储
-        profile_storage = get_bean_by_type(MongoProfileStorage)
-        logger.info(f"[聚类] MongoProfileStorage 获取成功: {type(profile_storage)}")
+        profile_storage = get_bean_by_type(UserProfileRawRepository)
+        logger.info(f"[聚类] UserProfileRawRepository 获取成功: {type(profile_storage)}")
 
         llm_provider = LLMProvider(
             provider_type=os.getenv("LLM_PROVIDER", "openai"),
