@@ -32,13 +32,13 @@ class MemoryType(str, Enum):
     CORE = "core"  # 核心记忆
 
     EPISODIC_MEMORY = "episodic_memory"
-    FORESIGHT = "foresight"
+    FORESIGHT = "foresight"  # 前瞻记忆 (原 semantic_memory)
     ENTITY = "entity"
     RELATION = "relation"
     BEHAVIOR_HISTORY = "behavior_history"
 
-    PERSONAL_FORESIGHT = "personal_foresight"
-    PERSONAL_EVENT_LOG = "personal_event_log"
+    PERSONAL_FORESIGHT = "personal_foresight"  # 个人前瞻 (原 personal_semantic_memory)
+    PERSONAL_EVENT_LOG = "personal_event_log"  # 事件日志（原子事实）
 
     GROUP_PROFILE = "group_profile"  # 群组画像
 
@@ -122,7 +122,7 @@ class EpisodicMemoryModel:
 
     id: str
     user_id: str
-    episode_id: str
+    episode_id: str  # 就是id，没区别，为了兼容性先留着
     title: str
     summary: str
     timestamp: Optional[datetime] = None
@@ -201,6 +201,7 @@ class BehaviorHistoryModel:
     timestamp: datetime = field(default_factory=datetime.now)
     session_id: Optional[str] = None
     created_at: datetime = field(default_factory=datetime.now)
+    updated_at: datetime = field(default_factory=datetime.now)
     metadata: Metadata = field(default_factory=Metadata)
 
 
@@ -210,8 +211,6 @@ class CoreMemoryModel:
 
     id: str
     user_id: str
-    version: str
-    is_latest: bool
     version: str
     is_latest: bool
 
@@ -252,6 +251,70 @@ class CoreMemoryModel:
     metadata: Metadata = field(default_factory=Metadata)
 
 
+@dataclass
+class EventLogModel:
+    """事件日志模型（原子事实）
+
+    从情景记忆中提取的原子事实，用于细粒度检索。
+    """
+
+    id: str
+    user_id: str
+    atomic_fact: str  # 原子事实内容
+    parent_episode_id: str  # 父情景记忆ID
+    timestamp: datetime  # 事件发生时间
+
+    # 可选字段
+    user_name: Optional[str] = None
+    group_id: Optional[str] = None
+    group_name: Optional[str] = None
+    participants: Optional[List[str]] = None
+    vector: Optional[List[float]] = None
+    vector_model: Optional[str] = None
+    event_type: Optional[str] = None
+    extend: Optional[Dict[str, Any]] = None
+
+    # 通用时间戳
+    created_at: datetime = field(default_factory=datetime.now)
+    updated_at: datetime = field(default_factory=datetime.now)
+    metadata: Metadata = field(default_factory=Metadata)
+
+
+@dataclass
+class ForesightRecordModel:
+    """前瞻记录模型 (原 SemanticMemoryRecordModel)
+
+    从情景记忆中提取的前瞻信息，支持个人和群组前瞻。
+    """
+
+    id: str
+    content: str  # 前瞻内容
+    parent_episode_id: str  # 父情景记忆ID
+
+    # 可选字段
+    user_id: Optional[str] = None
+    user_name: Optional[str] = None
+    group_id: Optional[str] = None
+    group_name: Optional[str] = None
+    start_time: Optional[str] = None  # 开始时间（日期字符串）
+    end_time: Optional[str] = None  # 结束时间（日期字符串）
+    duration_days: Optional[int] = None  # 持续天数
+    participants: Optional[List[str]] = None
+    vector: Optional[List[float]] = None
+    vector_model: Optional[str] = None
+    evidence: Optional[str] = None  # 支持该前瞻的证据
+    extend: Optional[Dict[str, Any]] = None
+
+    # 通用时间戳
+    created_at: datetime = field(default_factory=datetime.now)
+    updated_at: datetime = field(default_factory=datetime.now)
+    metadata: Metadata = field(default_factory=Metadata)
+
+
+# 兼容性别名
+SemanticMemoryRecordModel = ForesightRecordModel
+
+
 # 联合类型定义
 MemoryModel = Union[
     BaseMemoryModel,
@@ -263,4 +326,6 @@ MemoryModel = Union[
     RelationModel,
     BehaviorHistoryModel,
     CoreMemoryModel,
+    EventLogModel,
+    ForesightRecordModel,
 ]

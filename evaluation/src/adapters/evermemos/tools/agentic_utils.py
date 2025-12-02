@@ -120,6 +120,7 @@ def parse_json_response(response: str) -> dict:
         # Set default values
         result.setdefault("reasoning", "No reasoning provided")
         result.setdefault("missing_information", [])
+        result.setdefault("key_information_found", [])
         
         return result
     
@@ -131,7 +132,8 @@ def parse_json_response(response: str) -> dict:
         return {
             "is_sufficient": True,
             "reasoning": f"Failed to parse: {str(e)}",
-            "missing_information": []
+            "missing_information": [],
+            "key_information_found": []
         }
 
 
@@ -173,7 +175,7 @@ async def check_sufficiency(
     llm_provider,
     llm_config: dict,
     max_docs: int = 10
-) -> Tuple[bool, str, List[str]]:
+) -> Tuple[bool, str, List[str], List[str]]:
     """
     Check if retrieval results are sufficient.
     
@@ -185,7 +187,7 @@ async def check_sufficiency(
         max_docs: Maximum number of documents to evaluate
     
     Returns:
-        (is_sufficient, reasoning, missing_information)
+        (is_sufficient, reasoning, missing_information, key_information_found)
     """
     try:
         # Format documents (using Episode Memory format)
@@ -214,19 +216,20 @@ async def check_sufficiency(
         return (
             result["is_sufficient"],
             result["reasoning"],
-            result.get("missing_information", [])
+            result.get("missing_information", []),
+            result.get("key_information_found", [])
         )
     
     except asyncio.TimeoutError:
         print(f"  ❌ Sufficiency check timeout (30s)")
         # Timeout fallback: assume sufficient
-        return True, "Timeout: LLM took too long", []
+        return True, "Timeout: LLM took too long", [], []
     except Exception as e:
         print(f"  ❌ Sufficiency check failed: {e}")
         import traceback
         traceback.print_exc()
         # Conservative fallback: assume sufficient
-        return True, f"Error: {str(e)}", []
+        return True, f"Error: {str(e)}", [], []
 
 
 async def generate_refined_query(
@@ -235,6 +238,7 @@ async def generate_refined_query(
     missing_info: List[str],
     llm_provider,
     llm_config: dict,
+    key_info: Optional[List[str]] = None,
     max_docs: int = 10
 ) -> str:
     """
@@ -244,8 +248,9 @@ async def generate_refined_query(
         original_query: Original query
         results: Round 1 retrieval results (Top 10)
         missing_info: List of missing information
-        llm_client: LLM client
+        llm_provider: LLM Provider
         llm_config: LLM configuration
+        key_info: List of key information found (optional, for future use)
         max_docs: Maximum number of documents to use
     
     Returns:
@@ -353,6 +358,7 @@ async def generate_multi_queries(
     missing_info: List[str],
     llm_provider,
     llm_config: dict,
+    key_info: Optional[List[str]] = None,
     max_docs: int = 5,
     num_queries: int = 3
 ) -> Tuple[List[str], str]:
@@ -363,8 +369,9 @@ async def generate_multi_queries(
         original_query: Original query
         results: Round 1 retrieval results (Top 5)
         missing_info: List of missing information
-        llm_client: LLM client
+        llm_provider: LLM Provider
         llm_config: LLM configuration
+        key_info: List of key information found (for better query refinement)
         max_docs: Maximum number of documents to use (default 5)
         num_queries: Expected number of queries to generate (default 3, may be fewer)
     
@@ -381,12 +388,14 @@ async def generate_multi_queries(
             use_episode=True
         )
         missing_info_str = ", ".join(missing_info) if missing_info else "N/A"
+        key_info_str = ", ".join(key_info) if key_info else "N/A"
         
         # Use prompt template
         prompt = MULTI_QUERY_GENERATION_PROMPT.format(
             original_query=original_query,
             retrieved_docs=retrieved_docs,
-            missing_info=missing_info_str
+            missing_info=missing_info_str,
+            key_info=key_info_str
         )
         
         # Call LLM (using LLMProvider)

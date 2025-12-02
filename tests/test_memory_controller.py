@@ -14,9 +14,14 @@ Memory Controller API 测试脚本
     
     # 单独测试某个方法
     python tests/test_memory_controller.py --test-method memorize
-    python tests/test_memory_controller.py --test-method fetch_episodic_memory
+    python tests/test_memory_controller.py --test-method fetch_episodic
+    python tests/test_memory_controller.py --test-method fetch_event_log
     python tests/test_memory_controller.py --test-method search_keyword
-    python tests/test_memory_controller.py --test-method fetch_profile
+    
+    # 测试除了某些方法之外的所有方法（参数用逗号分隔）
+    python tests/test_memory_controller.py --except-test-method memorize
+    python tests/test_memory_controller.py --except-test-method memorize,fetch_episodic
+    python tests/test_memory_controller.py --except-test-method save_meta,patch_meta
 """
 
 import argparse
@@ -325,7 +330,7 @@ class MemoryControllerTester:
         print(f"\n✅ Memorize 测试完成")
         return status_code, response
 
-    def test_fetch_episodic_memory(self):
+    def test_fetch_episodic(self):
         """测试2: GET /api/v1/memories - 获取用户情景记忆（episodic_memory类型）"""
         self.print_section("测试2: GET /api/v1/memories - 获取用户情景记忆")
 
@@ -368,7 +373,6 @@ class MemoryControllerTester:
         if result["total_count"] > 0 and len(result["memories"]) > 0:
             for idx, memory in enumerate(result["memories"]):
                 assert isinstance(memory, dict), f"第 {idx} 条记忆应该是字典"
-                assert "memory_type" in memory, f"第 {idx} 条记忆应包含 memory_type"
                 assert "user_id" in memory, f"第 {idx} 条记忆应包含 user_id"
                 assert "timestamp" in memory, f"第 {idx} 条记忆应包含 timestamp"
                 assert (
@@ -376,20 +380,23 @@ class MemoryControllerTester:
                 ), f"第 {idx} 条记忆的 user_id 应该匹配"
 
             print(
-                f"✅ Fetch Episodic Memory 成功，返回 {result['total_count']} 条情景记忆，已验证深度结构"
+                f"✅ Fetch Episodic 成功，返回 {result['total_count']} 条情景记忆，已验证深度结构"
             )
         else:
-            print(
-                f"✅ Fetch Episodic Memory 成功，返回 {result['total_count']} 条情景记忆"
-            )
+            print(f"✅ Fetch Episodic 成功，返回 {result['total_count']} 条情景记忆")
 
         return status_code, response
 
-    def test_fetch_memories_profile(self):
-        """测试3: GET /api/v1/memories - 获取用户画像（profile类型）"""
-        self.print_section("测试3: GET /api/v1/memories - 获取用户画像")
+    def test_fetch_personal_semantic_memory(self):
+        """测试3: GET /api/v1/memories - 获取个人语义记忆（personal_semantic_memory类型）"""
+        self.print_section("测试3: GET /api/v1/memories - 获取个人语义记忆")
 
-        params = {"user_id": self.user_id, "memory_type": "profile", "limit": 10}
+        params = {
+            "user_id": self.user_id,
+            "memory_type": "personal_semantic_memory",
+            "limit": 10,
+            "offset": 0,
+        }
 
         status_code, response = self.call_get_api("", params)
 
@@ -406,18 +413,100 @@ class MemoryControllerTester:
         assert "has_more" in result, "result 应包含 has_more 字段"
         assert "metadata" in result, "result 应包含 metadata 字段"
 
-        # 验证 metadata 中的 memory_type（注意：可能是 "profile" 或 "fetch"）
+        # 验证数据类型
+        assert isinstance(result["memories"], list), "memories 应该是列表"
+        assert result["total_count"] >= 0, "total_count 应该 >= 0"
+        assert isinstance(result["has_more"], bool), "has_more 应该是布尔值"
+
+        # 验证 metadata 结构
         metadata = result["metadata"]
+        assert isinstance(metadata, dict), "metadata 应该是字典"
+        assert "source" in metadata, "metadata 应包含 source 字段"
+        assert "user_id" in metadata, "metadata 应包含 user_id 字段"
         assert "memory_type" in metadata, "metadata 应包含 memory_type 字段"
         assert metadata.get("user_id") == self.user_id, "metadata 的 user_id 应该匹配"
 
-        print(f"✅ Fetch Profile 成功，返回 {result['total_count']} 条画像记忆")
+        # 如果有记忆，深度验证结构
+        if result["total_count"] > 0 and len(result["memories"]) > 0:
+            for idx, memory in enumerate(result["memories"]):
+                assert isinstance(memory, dict), f"第 {idx} 条记忆应该是字典"
+                assert "content" in memory, f"第 {idx} 条记忆应包含 content"
+                assert (
+                    "parent_episode_id" in memory
+                ), f"第 {idx} 条记忆应包含 parent_episode_id"
+                # 个人语义记忆的user_id可能为None（群组场景），所以不强制检查
+
+            print(
+                f"✅ Fetch Personal Semantic Memory 成功，返回 {result['total_count']} 条个人语义记忆，已验证深度结构"
+            )
+        else:
+            print(
+                f"✅ Fetch Personal Semantic Memory 成功，返回 {result['total_count']} 条个人语义记忆"
+            )
+
+        return status_code, response
+
+    def test_fetch_event_log(self):
+        """测试4: GET /api/v1/memories - 获取用户事件日志（personal_event_log类型）"""
+        self.print_section("测试4: GET /api/v1/memories - 获取用户事件日志")
+
+        params = {
+            "user_id": self.user_id,
+            "memory_type": "personal_event_log",
+            "limit": 10,
+            "offset": 0,
+        }
+
+        status_code, response = self.call_get_api("", params)
+
+        # 断言：精确验证响应结构
+        assert status_code == 200, f"状态码应该是 200，实际: {status_code}"
+        assert (
+            response.get("status") == "ok"
+        ), f"状态应该是 ok，实际: {response.get('status')}"
+        assert "result" in response, "响应应包含 result 字段"
+
+        result = response["result"]
+        assert "memories" in result, "result 应包含 memories 字段"
+        assert "total_count" in result, "result 应包含 total_count 字段"
+        assert "has_more" in result, "result 应包含 has_more 字段"
+        assert "metadata" in result, "result 应包含 metadata 字段"
+
+        # 验证数据类型
+        assert isinstance(result["memories"], list), "memories 应该是列表"
+        assert result["total_count"] >= 0, "total_count 应该 >= 0"
+        assert isinstance(result["has_more"], bool), "has_more 应该是布尔值"
+
+        # 验证 metadata 结构
+        metadata = result["metadata"]
+        assert isinstance(metadata, dict), "metadata 应该是字典"
+        assert "source" in metadata, "metadata 应包含 source 字段"
+        assert "user_id" in metadata, "metadata 应包含 user_id 字段"
+        assert "memory_type" in metadata, "metadata 应包含 memory_type 字段"
+        assert metadata.get("user_id") == self.user_id, "metadata 的 user_id 应该匹配"
+
+        # 如果有事件日志，深度验证结构
+        if result["total_count"] > 0 and len(result["memories"]) > 0:
+            for idx, memory in enumerate(result["memories"]):
+                assert isinstance(memory, dict), f"第 {idx} 条记忆应该是字典"
+                assert "atomic_fact" in memory, f"第 {idx} 条记忆应包含 atomic_fact"
+                assert "timestamp" in memory, f"第 {idx} 条记忆应包含 timestamp"
+                assert "user_id" in memory, f"第 {idx} 条记忆应包含 user_id"
+                assert (
+                    memory.get("user_id") == self.user_id
+                ), f"第 {idx} 条记忆的 user_id 应该匹配"
+
+            print(
+                f"✅ Fetch Event Log 成功，返回 {result['total_count']} 条事件日志，已验证深度结构"
+            )
+        else:
+            print(f"✅ Fetch Event Log 成功，返回 {result['total_count']} 条事件日志")
 
         return status_code, response
 
     def test_search_memories_keyword(self):
-        """测试4: GET /api/v1/memories/search - 关键词检索（通过 body 传参）"""
-        self.print_section("测试4: GET /api/v1/memories/search - 关键词检索")
+        """测试5: GET /api/v1/memories/search - 关键词检索（通过 body 传参）"""
+        self.print_section("测试5: GET /api/v1/memories/search - 关键词检索")
 
         # 注意：虽然路由定义是 GET，但实际实现从 body 读取参数
         # 类似 Elasticsearch 的搜索 API，GET 请求可以带 body
@@ -491,8 +580,8 @@ class MemoryControllerTester:
         return status_code, response
 
     def test_search_memories_vector(self):
-        """测试5: GET /api/v1/memories/search - 向量检索（通过 body 传参）"""
-        self.print_section("测试5: GET /api/v1/memories/search - 向量检索")
+        """测试6: GET /api/v1/memories/search - 向量检索（通过 body 传参）"""
+        self.print_section("测试6: GET /api/v1/memories/search - 向量检索")
 
         data = {
             "user_id": self.user_id,
@@ -531,8 +620,8 @@ class MemoryControllerTester:
         return status_code, response
 
     def test_search_memories_hybrid(self):
-        """测试6: GET /api/v1/memories/search - 混合检索（通过 body 传参）"""
-        self.print_section("测试6: GET /api/v1/memories/search - 混合检索")
+        """测试7: GET /api/v1/memories/search - 混合检索（通过 body 传参）"""
+        self.print_section("测试7: GET /api/v1/memories/search - 混合检索")
 
         now = datetime.now(SHANGHAI_TZ)
         data = {
@@ -580,9 +669,9 @@ class MemoryControllerTester:
         return status_code, response
 
     def test_save_conversation_meta(self):
-        """测试7: POST /api/v1/memories/conversation-meta - 保存对话元数据"""
+        """测试8: POST /api/v1/memories/conversation-meta - 保存对话元数据"""
         self.print_section(
-            "测试7: POST /api/v1/memories/conversation-meta - 保存对话元数据"
+            "测试8: POST /api/v1/memories/conversation-meta - 保存对话元数据"
         )
 
         now = datetime.now(SHANGHAI_TZ)
@@ -635,9 +724,9 @@ class MemoryControllerTester:
         return status_code, response
 
     def test_patch_conversation_meta(self):
-        """测试8: PATCH /api/v1/memories/conversation-meta - 局部更新对话元数据"""
+        """测试9: PATCH /api/v1/memories/conversation-meta - 局部更新对话元数据"""
         self.print_section(
-            "测试8: PATCH /api/v1/memories/conversation-meta - 局部更新对话元数据"
+            "测试9: PATCH /api/v1/memories/conversation-meta - 局部更新对话元数据"
         )
 
         data = {
@@ -683,7 +772,7 @@ class MemoryControllerTester:
 
         return status_code, response
 
-    def run_all_tests(self, test_method: str = "all"):
+    def run_all_tests(self, test_method: str = "all", except_test_methods: str = None):
         """
         运行测试
 
@@ -691,13 +780,16 @@ class MemoryControllerTester:
             test_method: 指定要运行的测试方法，可选值：
                 - all: 运行所有测试
                 - memorize: 测试存储对话记忆
-                - fetch_episodic_memory: 测试获取情景记忆
+                - fetch_episodic: 测试获取情景记忆
+                - fetch_event_log: 测试获取事件日志
                 - fetch_profile: 测试获取用户画像
                 - search_keyword: 测试关键词检索
                 - search_vector: 测试向量检索
                 - search_hybrid: 测试混合检索
                 - save_meta: 测试保存对话元数据
                 - patch_meta: 测试更新对话元数据
+            except_test_methods: 指定要排除的测试方法（用逗号分隔），例如: "memorize,fetch_episodic"
+                当指定此参数时，将运行除了这些方法之外的所有测试
         """
         print("\n" + "=" * 80)
         print("  开始执行 Memory Controller API 测试")
@@ -706,13 +798,16 @@ class MemoryControllerTester:
         print(f"  测试用户: {self.user_id}")
         print(f"  测试群组: {self.group_id}")
         print(f"  测试方法: {test_method}")
+        if except_test_methods:
+            print(f"  排除方法: {except_test_methods}")
         print("=" * 80)
 
         # 定义测试方法映射
         test_methods = {
             "memorize": self.test_memorize_single_message,
-            "fetch_episodic_memory": self.test_fetch_episodic_memory,
-            "fetch_profile": self.test_fetch_memories_profile,
+            "fetch_episodic": self.test_fetch_episodic,
+            "fetch_semantic": self.test_fetch_personal_semantic_memory,
+            "fetch_event_log": self.test_fetch_event_log,
             "search_keyword": self.test_search_memories_keyword,
             "search_vector": self.test_search_memories_vector,
             "search_hybrid": self.test_search_memories_hybrid,
@@ -720,9 +815,35 @@ class MemoryControllerTester:
             "patch_meta": self.test_patch_conversation_meta,
         }
 
+        # 解析排除的测试方法列表
+        excluded_methods = set()
+        if except_test_methods:
+            excluded_list = [m.strip() for m in except_test_methods.split(",")]
+            for method_name in excluded_list:
+                if method_name not in test_methods:
+                    print(f"\n⚠️  警告: 未知的测试方法 '{method_name}'，将被忽略")
+                else:
+                    excluded_methods.add(method_name)
+
         # 执行测试
         try:
-            if test_method == "all":
+            if except_test_methods:
+                # except-test-method 模式：运行除了指定方法之外的所有测试
+                methods_to_run = [
+                    (name, method)
+                    for name, method in test_methods.items()
+                    if name not in excluded_methods
+                ]
+                if not methods_to_run:
+                    print("\n⚠️  没有需要运行的测试方法（所有方法都被排除）")
+                    return
+
+                print(
+                    f"\n📋 将运行 {len(methods_to_run)} 个测试方法（排除了 {len(excluded_methods)} 个）"
+                )
+                for name, method in methods_to_run:
+                    method()
+            elif test_method == "all":
                 # 运行所有测试
                 for method in test_methods.values():
                     method()
@@ -741,7 +862,9 @@ class MemoryControllerTester:
 
         # 测试完成
         self.print_section("测试完成")
-        if test_method == "all":
+        if except_test_methods:
+            print(f"\n✅ 已完成除了 [{except_test_methods}] 之外的所有测试！")
+        elif test_method == "all":
             print("\n✅ 所有接口结构验证通过！")
         else:
             print(f"\n✅ 测试方法 [{test_method}] 验证通过！")
@@ -766,9 +889,14 @@ def parse_args():
 
   # 单独测试某个方法
   python tests/test_memory_controller.py --test-method memorize
-  python tests/test_memory_controller.py --test-method fetch_episodic_memory
+  python tests/test_memory_controller.py --test-method fetch_episodic
+  python tests/test_memory_controller.py --test-method fetch_event_log
   python tests/test_memory_controller.py --test-method search_keyword
-  python tests/test_memory_controller.py --test-method fetch_profile
+
+  # 测试除了某些方法之外的所有方法（参数用逗号分隔）
+  python tests/test_memory_controller.py --except-test-method memorize
+  python tests/test_memory_controller.py --except-test-method memorize,fetch_episodic
+  python tests/test_memory_controller.py --except-test-method save_meta,patch_meta
 
   # 指定所有参数
   python tests/test_memory_controller.py --base-url http://dev-server:1995 --user-id test_user --group-id test_group --timeout 60
@@ -781,17 +909,9 @@ def parse_args():
         help="API基础URL (默认: http://localhost:1995)",
     )
 
-    parser.add_argument(
-        "--user-id",
-        default="6555af3394eae949f852d88c",
-        help="测试用户ID (默认: 6555af3394eae949f852d88c)",
-    )
+    parser.add_argument("--user-id", default=None, help="测试用户ID (默认: 随机生成)")
 
-    parser.add_argument(
-        "--group-id",
-        default="test_group_controller_001",
-        help="测试群组ID (默认: test_group_controller_001)",
-    )
+    parser.add_argument("--group-id", default=None, help="测试群组ID (默认: 随机生成)")
 
     parser.add_argument(
         "--timeout", type=int, default=180, help="请求超时时间(秒) (默认: 180)"
@@ -803,8 +923,9 @@ def parse_args():
         choices=[
             "all",
             "memorize",
-            "fetch_episodic_memory",
-            "fetch_profile",
+            "fetch_episodic",
+            "fetch_semantic",
+            "fetch_event_log",
             "search_keyword",
             "search_vector",
             "search_hybrid",
@@ -812,6 +933,12 @@ def parse_args():
             "patch_meta",
         ],
         help="指定要运行的测试方法 (默认: all 运行所有测试)",
+    )
+
+    parser.add_argument(
+        "--except-test-method",
+        default=None,
+        help="指定要排除的测试方法（用逗号分隔），运行除了这些方法之外的所有测试。例如: --except-test-method memorize,fetch_episodic",
     )
 
     return parser.parse_args()
@@ -822,16 +949,35 @@ def main():
     # 解析命令行参数
     args = parse_args()
 
+    # 检查参数冲突：不能同时指定 --test-method 和 --except-test-method
+    if args.test_method != "all" and args.except_test_method:
+        print("❌ 错误: 不能同时使用 --test-method 和 --except-test-method")
+        print("   请选择其中一个使用：")
+        print("   - 使用 --test-method 指定要运行的单个测试")
+        print("   - 使用 --except-test-method 指定要排除的测试（运行其他所有测试）")
+        return
+
+    # 如果未提供 user_id，随机生成一个
+    user_id = args.user_id if args.user_id else f"user_{uuid.uuid4().hex[:12]}"
+
+    # 如果未提供 group_id，随机生成一个
+    group_id = args.group_id if args.group_id else f"group_{uuid.uuid4().hex[:12]}"
+
+    # 输出使用的ID信息
+    if not args.user_id:
+        print(f"⚠️  未提供 --user-id，自动生成: {user_id}")
+    if not args.group_id:
+        print(f"⚠️  未提供 --group-id，自动生成: {group_id}")
+
     # 创建测试器实例
     tester = MemoryControllerTester(
-        base_url=args.base_url,
-        user_id=args.user_id,
-        group_id=args.group_id,
-        timeout=args.timeout,
+        base_url=args.base_url, user_id=user_id, group_id=group_id, timeout=args.timeout
     )
 
-    # 运行测试（根据参数决定运行全部还是单个）
-    tester.run_all_tests(test_method=args.test_method)
+    # 运行测试（根据参数决定运行全部还是单个，或者排除某些测试）
+    tester.run_all_tests(
+        test_method=args.test_method, except_test_methods=args.except_test_method
+    )
 
 
 if __name__ == "__main__":

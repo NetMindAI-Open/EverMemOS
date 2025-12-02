@@ -183,7 +183,7 @@ class EventLogExtractor:
         logger.error(f"无法解析LLM响应: {response[:200]}...")
         raise ValueError(f"无法解析LLM响应为有效的JSON格式")
 
-    async def extract_event_log(
+    async def _extract_event_log(
         self, episode_text: str, timestamp: Any
     ) -> Optional[EventLog]:
         """
@@ -196,80 +196,83 @@ class EventLogExtractor:
         Returns:
             EventLog: 提取的事件日志，如果提取失败则返回None
         """
-        # 最多重试5次
+
+        # 1. 解析并格式化时间戳
+        dt = self._parse_timestamp(timestamp)
+        time_str = self._format_timestamp(dt)
+
+        # 2. 构建prompt（使用实例变量 self.event_log_prompt）
+        prompt = self.event_log_prompt.replace("{{EPISODE_TEXT}}", episode_text)
+        prompt = prompt.replace("{{TIME}}", time_str)
+
+        # 3. 调用LLM生成event log
+        response = await self.llm_provider.generate(prompt)
+
+        # 4. 解析LLM响应
+        data = self._parse_llm_response(response)
+
+        # 5. 验证响应格式
+        if "event_log" not in data:
+            raise ValueError(f"LLM响应中缺少'event_log'字段")
+
+        event_log_data = data["event_log"]
+
+        # 验证必需字段：time 和 atomic_fact 必须存在
+        if "time" not in event_log_data or not event_log_data["time"]:
+            raise ValueError("event_log中缺少time字段")
+        if "atomic_fact" not in event_log_data:
+            raise ValueError("event_log中缺少atomic_fact字段")
+
+        # 验证atomic_fact是列表
+        if not isinstance(event_log_data["atomic_fact"], list):
+            raise ValueError(f"atomic_fact不是列表: {type(event_log_data['atomic_fact'])}")
+        
+        # 验证atomic_fact不为空
+        if len(event_log_data["atomic_fact"]) == 0:
+            raise ValueError("atomic_fact列表为空")
+
+        # 6. 创建EventLog对象
+        event_log = EventLog(
+            time=event_log_data["time"], 
+            atomic_fact=event_log_data["atomic_fact"]
+        )
+        
+        # 7. 批量为所有 atomic_fact 生成 embedding（性能优化）
+        from agentic_layer.vectorize_service import get_vectorize_service
+        vectorize_service = get_vectorize_service()
+        
+        # 批量计算 embeddings（使用 get_embeddings，接受 List[str]）
+        fact_embeddings_batch = await vectorize_service.get_embeddings(
+            event_log.atomic_fact
+        )
+        
+        # 转换为列表格式
+        fact_embeddings = [
+            emb.tolist() if hasattr(emb, 'tolist') else emb 
+            for emb in fact_embeddings_batch
+        ]
+        
+        event_log.fact_embeddings = fact_embeddings
+
+        logger.debug(
+            f"✅ 成功提取event log，包含 {len(event_log.atomic_fact)} 个原子事实（已生成 embedding）"
+        )
+        return event_log
+
+
+    async def extract_event_log(self, episode_text: str, timestamp: Any) -> Optional[EventLog]:
+        """
+        提取event log
+        """
         for retry in range(5):
             try:
-                # 1. 解析并格式化时间戳
-                dt = self._parse_timestamp(timestamp)
-                time_str = self._format_timestamp(dt)
-
-                # 2. 构建prompt（使用实例变量 self.event_log_prompt）
-                prompt = self.event_log_prompt.replace("{{EPISODE_TEXT}}", episode_text)
-                prompt = prompt.replace("{{TIME}}", time_str)
-
-                # 3. 调用LLM生成event log
-                logger.debug(f"开始提取event log，时间: {time_str}，重试次数: {retry+1}/5")
-                response = await self.llm_provider.generate(prompt)
-
-                # 4. 解析LLM响应
-                data = self._parse_llm_response(response)
-
-                # 5. 验证响应格式
-                if "event_log" not in data:
-                    raise ValueError(f"LLM响应中缺少'event_log'字段")
-
-                event_log_data = data["event_log"]
-
-                # 验证必需字段：time 和 atomic_fact 必须存在
-                if "time" not in event_log_data or not event_log_data["time"]:
-                    raise ValueError("event_log中缺少time字段")
-                if "atomic_fact" not in event_log_data:
-                    raise ValueError("event_log中缺少atomic_fact字段")
-
-                # 验证atomic_fact是列表
-                if not isinstance(event_log_data["atomic_fact"], list):
-                    raise ValueError(f"atomic_fact不是列表: {type(event_log_data['atomic_fact'])}")
-                
-                # 验证atomic_fact不为空
-                if len(event_log_data["atomic_fact"]) == 0:
-                    raise ValueError("atomic_fact列表为空")
-
-                # 6. 创建EventLog对象
-                event_log = EventLog(
-                    time=event_log_data["time"], 
-                    atomic_fact=event_log_data["atomic_fact"]
-                )
-                
-                # 7. 批量为所有 atomic_fact 生成 embedding（性能优化）
-                from agentic_layer.vectorize_service import get_vectorize_service
-                vectorize_service = get_vectorize_service()
-                
-                # 批量计算 embeddings（使用 get_embeddings，接受 List[str]）
-                fact_embeddings_batch = await vectorize_service.get_embeddings(
-                    event_log.atomic_fact
-                )
-                
-                # 转换为列表格式
-                fact_embeddings = [
-                    emb.tolist() if hasattr(emb, 'tolist') else emb 
-                    for emb in fact_embeddings_batch
-                ]
-                
-                event_log.fact_embeddings = fact_embeddings
-
-                logger.debug(
-                    f"✅ 成功提取event log，包含 {len(event_log.atomic_fact)} 个原子事实（已生成 embedding）"
-                )
-                return event_log
-
+                return await self._extract_event_log(episode_text, timestamp)
             except Exception as e:
                 logger.warning(f"提取event log重试 {retry+1}/5: {e}")
                 if retry == 4:
                     logger.error(f"提取event log失败，已重试5次")
-                    return None
+                    raise Exception(f"提取event log失败: {e}")
                 continue
-        
-        return None
 
     async def extract_event_logs_batch(
         self, episodes: List[Dict[str, Any]]

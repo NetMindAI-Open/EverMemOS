@@ -14,10 +14,9 @@ from ..prompts import (
 )
 from ..llm.llm_provider import LLMProvider
 from .base_memory_extractor import MemoryExtractor, MemoryExtractRequest
-from ..types import MemoryType, MemCell, Memory, ForesightItem
+from api_specs.memory_types import MemoryType, MemCell, Memory, ForesightItem
 from agentic_layer.vectorize_service import get_vectorize_service
 from core.observation.logger import get_logger
-import uuid
 
 logger = get_logger(__name__)
 
@@ -305,16 +304,16 @@ class ForesightExtractor(MemoryExtractor):
                 # 批量计算所有 content 的 embeddings（性能优化）
                 vs = get_vectorize_service()
                 contents = [item['content'] for item in items_to_process]
-                embeddings_batch = await vs.get_embeddings(contents)  # 使用 get_embeddings (List[str])
+                vectors_batch = await vs.get_embeddings(contents)  # 使用 get_embeddings (List[str])
                 
                 # 创建ForesightItem对象
                 for i, item_data in enumerate(items_to_process):
                     # 处理 embedding：可能是 numpy 数组或已经是列表
-                    embedding = embeddings_batch[i]
-                    if hasattr(embedding, 'tolist'):
-                        embedding = embedding.tolist()
-                    elif not isinstance(embedding, list):
-                        embedding = list(embedding)
+                    vector = vectors_batch[i]
+                    if hasattr(vector, 'tolist'):
+                        vector = vector.tolist()
+                    elif not isinstance(vector, list):
+                        vector = list(vector)
                     
                     memory_item = ForesightItem(
                         content=item_data['content'],
@@ -323,7 +322,8 @@ class ForesightExtractor(MemoryExtractor):
                         end_time=item_data['end_time'],
                         duration_days=item_data['duration_days'],
                         source_episode_id=item_data['source_episode_id'],
-                        embedding=embedding,
+                        vector=vector,
+                        vector_model=vs.get_model_name(),
                     )
                     foresights.append(memory_item)
 

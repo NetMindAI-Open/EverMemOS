@@ -129,8 +129,8 @@ class MemorySyncService:
             # 同步到 ES
             if sync_to_es:
                 # 使用转换器生成正确的 ES 文档(包括 jieba 分词的 search_content)
-                es_doc = ForesightConverter.from_mongo(foresight)
-                await es_doc.save()
+es_doc = ForesightConverter.from_mongo(foresight)
+                await self.foresight_es_repo.create(es_doc)
                 stats["es_records"] += 1
                 logger.debug(f"已同步前瞻到 ES: {foresight.id}")
             
@@ -176,7 +176,7 @@ class MemorySyncService:
             if sync_to_es:
                 # 使用转换器生成正确的 ES 文档(包括 jieba 分词的 search_content)
                 es_doc = EventLogConverter.from_mongo(event_log)
-                await es_doc.save()
+                await self.eventlog_es_repo.create(es_doc)
                 stats["es_records"] += 1
                 logger.debug(f"已同步事件日志到 ES: {event_log.id}")
             

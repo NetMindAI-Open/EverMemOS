@@ -10,9 +10,8 @@
 """
 
 import time
-from memory_layer.memory_manager import MemorizeRequest
-from memory_layer.types import MemoryType, MemCell, Memory, RawDataType
-from memory_layer.memcell_extractor.base_memcell_extractor import RawData
+from api_specs.dtos.memory_command import MemorizeRequest
+from api_specs.memory_types import MemCell, RawDataType
 from memory_layer.memory_extractor.profile_memory_extractor import ProfileMemory
 from memory_layer.memory_extractor.group_profile_memory_extractor import (
     GroupProfileMemory,
@@ -65,9 +64,10 @@ from infra_layer.adapters.out.persistence.document.memory.foresight_record impor
 from infra_layer.adapters.out.persistence.document.memory.event_log_record import (
     EventLogRecord,
 )
-from memory_layer.types import RawDataType
+from api_specs.memory_types import RawDataType
+
 logger = get_logger(__name__)
-import uuid
+
 # ==================== 时间处理函数 ====================
 
 
@@ -293,7 +293,8 @@ def _convert_episode_memory_to_doc(
         keywords=getattr(episode_memory, 'keywords', None),
         linked_entities=getattr(episode_memory, 'linked_entities', None),
         memcell_event_id_list=getattr(episode_memory, 'memcell_event_id_list', None),
-        vector_model=getattr(episode_memory, 'vector_model', None),
+        vector_model=episode_memory.vector_model,
+        vector=episode_memory.vector,
         extend={
             "memory_type": episode_memory.memory_type.value,
             "ori_event_id": getattr(episode_memory, 'ori_event_id', None),
@@ -318,12 +319,11 @@ def _convert_foresight_to_doc(
     Returns:
         ForesightRecord: 数据库文档格式的前瞻对象
     """
-    
 
     if current_time is None:
         current_time = get_now_with_timezone()
 
-    return ForesightRecord(
+return ForesightRecord(
         user_id=getattr(foresight, "user_id", None),
         user_name=getattr(
             foresight, "user_name", getattr(parent_doc, "user_name", None)
@@ -380,10 +380,8 @@ def _convert_event_log_to_docs(
             atomic_fact=fact,
             parent_episode_id=str(parent_doc.event_id),
             timestamp=parent_doc.timestamp or current_time,
-            group_id=getattr(event_log, "group_id", parent_doc.group_id),
-            group_name=getattr(
-                event_log, "group_name", getattr(parent_doc, "group_name", None)
-            ),
+            group_id=event_log.group_id,
+            group_name=event_log.group_name,
             participants=parent_doc.participants,
             vector=vector,
             vector_model=getattr(event_log, 'vector_model', None),

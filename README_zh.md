@@ -1,16 +1,16 @@
 <div align="center">
 
-  <h1>
-    <img src="figs/logo.png" alt="EverMemOS Logo" height="40" style="vertical-align: middle; margin-right: 12px;"/>
-    EverMemOS
-  </h1>
-  
-   <p><a href="https://evermind-ai.com/" target="_blank" style="color: #4A90E2; text-decoration: none; font-weight: 500;">https://evermind-ai.com/</a></p>
+<h1>
+  EverMemOS
+</h1>
 
-  
-  <p><strong>每次交流，都由理解驱动</strong> · 企业级智能记忆系统</p>
+<p>
+  <a href="https://everm.ai/" target="_blank">
+    <img src="figs/evermind_logo.svg" alt="EverMind" height="34" />
+  </a>
+</p>
 
-
+<p><strong>每次交流，都由理解驱动</strong> · 企业级智能记忆系统</p>
 
 <p>
   <img alt="Python" src="https://img.shields.io/badge/Python-3.10+-0084FF?style=flat-square&logo=python&logoColor=white" />
@@ -22,12 +22,12 @@
   <img alt="Milvus" src="https://img.shields.io/badge/Milvus-2.4+-00A3E0?style=flat-square" />
   <img alt="Redis" src="https://img.shields.io/badge/Redis-7.x-26A69A?style=flat-square&logo=redis&logoColor=white" />
    <a href="https://github.com/EverMind-AI/EverMemOS/releases">
-    <img alt="Release" src="https://img.shields.io/badge/release-v1.0.0-4A90E2?style=flat-square" />
+    <img alt="Release" src="https://img.shields.io/badge/release-v1.1.0-4A90E2?style=flat-square" />
   </a>
 </p>
 
 <p>
-  <a href="README.md">English</a> | <a href="README_zh.md">简体中文</a> 
+  <a href="README.md">English</a> | <a href="README_zh.md">简体中文</a>
 </p>
 
 </div>
@@ -47,6 +47,13 @@
 <table>
 <tr>
 <td width="100%" style="border: none;">
+
+**[2025-11-27] 🎉 🎉 🎉 EverMemOS v1.1.0 版本发布！**
+
+- 🔧 **vLLM 支持**：支持 Embedding 和 Reranker 模型的 vLLM 部署（目前专为 Qwen3 系列定制）
+- 📊 **评估资源**：LoCoMo、LongMemEval、PersonaMem 的完整结果与代码已发布
+
+<br/>
 
 **[2025-11-02] 🎉 🎉 🎉 EverMemOS v1.0.0 版本发布！**
 
@@ -176,19 +183,15 @@ EverMemOS 围绕两条主线运行：**记忆构筑**与**记忆感知**。它�
   批量并发处理 + 指数退避重试，在高吞吐下保持稳定性  
   对候选记忆按深度相关性重新排序，让最关键的信息优先呈现
 
-#### 🤖 Agentic 智能检索
-
-- **🎓 LLM 引导的多轮召回**  
-  对于不充分的情况，生成 2-3 个互补查询，并行检索并融合
-  自动识别缺失信息，主动补足检索盲区
-
-- **🔀 多查询并行策略**  
-  当单一查询无法完整表达意图时，生成多个互补视角的查询  
-  通过多路 RRF 融合，提升复杂意图的理解覆盖度
+#### 🚀 灵活检索策略
 
 - **⚡ 轻量级快速模式**  
-  对延迟敏感的场景，跳过 LLM 调用，RRF融合混合检索
-  在速度与质量间灵活平衡
+  针对延迟敏感场景，跳过 LLM 调用，直接使用关键词检索（BM25）  
+  实现较快响应速度
+
+- **🎓 Agentic 多轮召回**  
+  对于信息不充分的情况，生成 2-3 个互补查询，并行检索并融合  
+  通过多路 RRF 融合，提升复杂意图的理解覆盖度
 
 #### 🧠 推理融合
 
@@ -268,6 +271,7 @@ cp env.template .env
 # 编辑 .env 文件，填入必要的配置
 #   - LLM_API_KEY: 填入您的 LLM API Key（用于记忆提取）
 #   - DEEPINFRA_API_KEY: 填入您的 DeepInfra API Key（用于 Embedding 和 Rerank）
+# 详细配置说明请参考：[配置指南](docs/usage/CONFIGURATION_GUIDE_zh.md)
 ```
 
 **Docker 服务说明**：
@@ -475,7 +479,7 @@ curl -X POST http://localhost:8001/api/v3/agentic/memorize \
 **API 功能说明**：
 
 - **`/api/v3/agentic/memorize`**: 存储单条消息记忆
-- **`/api/v3/agentic/retrieve_lightweight`**: 轻量级记忆检索（Embedding + BM25 + RRF）
+- **`/api/v3/agentic/retrieve_lightweight`**: 轻量级记忆检索（快速检索模式）
 - **`/api/v3/agentic/retrieve_agentic`**: Agentic 记忆检索（LLM 引导的多轮智能检索）
 
 更多 API 详情请参考 [Agentic V3 API 文档](docs/api_docs/agentic_v3_api_zh.md)。
@@ -493,6 +497,7 @@ EverMemOS 提供两种检索模式：**轻量级检索**（快速）和 **Agenti
 | `query` | 是* | 自然语言查询（*profile 数据源时可选） |
 | `user_id` | 否 | 用户 ID |
 | `data_source` | 是 | `episode` / `event_log` / `foresight` / `profile` |
+| `memory_scope` | 是 | `personal`（仅 user_id） / `group`（仅 group_id） / `all`（两者） |
 | `retrieval_mode` | 是 | `embedding` / `bm25` / `rrf`（推荐） |
 | `group_id` | 否 | 群组 ID |
 | `current_time` | 否 | 过滤有效期内的 foresight（格式: YYYY-MM-DD） |
@@ -510,6 +515,7 @@ curl -X POST http://localhost:8001/api/v3/agentic/retrieve_lightweight \
     "query": "用户喜欢什么运动",
     "user_id": "user_001",
     "data_source": "episode",
+    "memory_scope": "personal",
     "retrieval_mode": "rrf"
   }'
 ```
@@ -528,6 +534,7 @@ curl -X POST http://localhost:8001/api/v3/agentic/retrieve_lightweight \
     "query": "讨论项目进展",
     "group_id": "project_team_001",
     "data_source": "episode",
+    "memory_scope": "group",
     "retrieval_mode": "rrf"
   }'
 ```
@@ -628,6 +635,7 @@ uv run python src/bootstrap.py src/run_memorize.py \
 
 详细的安装、配置和使用说明，请参考：
 - 📚 [快速开始指南](docs/dev_docs/getting_started.md) - 完整的安装和配置步骤
+- ⚙️ [配置指南](docs/usage/CONFIGURATION_GUIDE_zh.md) - 环境变量与服务配置详解
 - 📖 [API 使用指南](docs/dev_docs/api_usage_guide.md) - API 接口和数据格式详解
 - 🔧 [开发指南](docs/dev_docs/development_guide.md) - 架构设计和开发最佳实践
 - 🚀 [Bootstrap 使用](docs/dev_docs/bootstrap_usage.md) - 脚本运行器使用说明
@@ -730,6 +738,8 @@ Coming soon
 感谢以下项目和社区的灵感和支持：
 
 - [Memos](https://github.com/usememos/memos) - 感谢 Memos 项目提供了一个完善的、标准化的开源笔记服务，为我们的记忆系统设计提供了宝贵的启发。
+
+- [Nemori](https://github.com/nemori-ai/nemori) - 感谢 Nemori 项目提供了一个用于智能体 LLM 工作流的自组织长期记忆系统，为我们的记忆系统设计提供了宝贵的启发。
 
 ---
 

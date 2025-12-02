@@ -1,14 +1,16 @@
 <div align="center">
 
 <h1>
-  <img src="figs/logo.png" alt="EverMemOS Logo" height="40" style="vertical-align: middle; margin-right: 12px;"/>
   EverMemOS
 </h1>
 
- <p><a href="https://evermind-ai.com/" target="_blank" style="color: #4A90E2; text-decoration: none; font-weight: 500;">https://evermind-ai.com/</a></p>
+<p>
+  <a href="https://everm.ai/" target="_blank">
+    <img src="figs/evermind_logo.svg" alt="EverMind" height="34" />
+  </a>
+</p>
 
-
-<p><strong>Let every interaction be driven by understanding.</strong> · Enterprise-Grade Intelligent Memory System</p>
+<p><strong>Let every interaction be driven by understanding </strong> · Enterprise-Grade Intelligent Memory System</p>
 
 <p>
   <img alt="Python" src="https://img.shields.io/badge/Python-3.10+-0084FF?style=flat-square&logo=python&logoColor=white" />
@@ -20,7 +22,7 @@
   <img alt="Milvus" src="https://img.shields.io/badge/Milvus-2.4+-00A3E0?style=flat-square" />
   <img alt="Redis" src="https://img.shields.io/badge/Redis-7.x-26A69A?style=flat-square&logo=redis&logoColor=white" />
    <a href="https://github.com/EverMind-AI/EverMemOS/releases">
-    <img alt="Release" src="https://img.shields.io/badge/release-v1.0.0-4A90E2?style=flat-square" />
+    <img alt="Release" src="https://img.shields.io/badge/release-v1.1.0-4A90E2?style=flat-square" />
   </a>
 </p>
 
@@ -45,6 +47,13 @@ On the **LoCoMo** benchmark, our approach built upon EverMemOS achieved a reason
 <table>
 <tr>
 <td width="100%" style="border: none;">
+
+**[2025-11-27] 🎉 🎉 🎉 EverMemOS v1.1.0 Released!**
+
+- 🔧 **vLLM Support**: Support vLLM deployment for Embedding and Reranker models (currently tailored for Qwen3 series)
+- 📊 **Evaluation Resources**: Full results & code for LoCoMo, LongMemEval, PersonaMem released
+
+<br/>
 
 **[2025-11-02] 🎉 🎉 🎉 EverMemOS v1.0.0 Released!**
 
@@ -174,19 +183,15 @@ Memory perception layer: quickly recalls relevant memories through multi-round r
   Batch concurrent processing with exponential backoff retry, maintaining stability under high throughput  
   Reorders candidate memories by deep relevance, prioritizing the most critical information
 
-#### 🤖 Agentic Intelligent Retrieval
-
-- **🎓 LLM-Guided Multi-Round Recall**  
-  For insufficient cases, generate 2-3 complementary queries, retrieve and fuse in parallel
-  Automatically identifies missing information, proactively filling retrieval blind spots
-
-- **🔀 Multi-Query Parallel Strategy**  
-  When a single query cannot fully express intent, generate multiple complementary perspective queries  
-  Enhance coverage of complex intents through multi-path RRF fusion
+#### 🚀 Flexible Retrieval Strategies
 
 - **⚡ Lightweight Fast Mode**  
-  For latency-sensitive scenarios, skip LLM calls and use RRF-fused hybrid retrieval  
-  Flexibly balance between speed and quality
+  For latency-sensitive scenarios, skip LLM calls and use pure keyword retrieval (BM25)  
+  Achieve a faster response speed
+
+- **🎓 Agentic Multi-Round Recall**  
+  For insufficient cases, generate 2-3 complementary queries, retrieve and fuse in parallel  
+  Enhance coverage of complex intents through multi-path RRF fusion
 
 #### 🧠 Reasoning Fusion
 
@@ -265,6 +270,7 @@ cp env.template .env
 # Edit the .env file and fill in the necessary configurations:
 #   - LLM_API_KEY: Enter your LLM API Key (for memory extraction)
 #   - DEEPINFRA_API_KEY: Enter your DeepInfra API Key (for Embedding and Rerank)
+# For detailed configuration instructions, please refer to: [Configuration Guide](docs/usage/CONFIGURATION_GUIDE.md)
 ```
 
 **Docker Services**:
@@ -478,7 +484,7 @@ curl -X POST http://localhost:8001/api/v3/agentic/memorize \
 **API Features**:
 
 - **`/api/v3/agentic/memorize`**: Store single message memory
-- **`/api/v3/agentic/retrieve_lightweight`**: Lightweight memory retrieval (Embedding + BM25 + RRF)
+- **`/api/v3/agentic/retrieve_lightweight`**: Lightweight memory retrieval (fast retrieval mode)
 - **`/api/v3/agentic/retrieve_agentic`**: Agentic memory retrieval (LLM-guided multi-round intelligent retrieval)
 
 For more API details, please refer to [Agentic V3 API Documentation](docs/api_docs/agentic_v3_api.md).
@@ -496,6 +502,7 @@ EverMemOS provides two retrieval modes: **Lightweight** (fast) and **Agentic** (
 | `query` | Yes* | Natural language query (*optional for profile data source) |
 | `user_id` | No | User ID |
 | `data_source` | Yes | `episode` / `event_log` / `foresight` / `profile` |
+| `memory_scope` | Yes | `personal` (user_id only) / `group` (group_id only) / `all` (both) |
 | `retrieval_mode` | Yes | `embedding` / `bm25` / `rrf` (recommended) |
 | `group_id` | No | Group ID |
 | `current_time` | No | Filter valid foresight (format: YYYY-MM-DD) |
@@ -513,6 +520,7 @@ curl -X POST http://localhost:8001/api/v3/agentic/retrieve_lightweight \
     "query": "What sports does the user like?",
     "user_id": "user_001",
     "data_source": "episode",
+    "memory_scope": "personal",
     "retrieval_mode": "rrf"
   }'
 ```
@@ -531,6 +539,7 @@ curl -X POST http://localhost:8001/api/v3/agentic/retrieve_lightweight \
     "query": "Discuss project progress",
     "group_id": "project_team_001",
     "data_source": "episode",
+    "memory_scope": "group",
     "retrieval_mode": "rrf"
   }'
 ```
@@ -631,6 +640,7 @@ For complete format specifications, please refer to [Group Chat Format Specifica
 
 For detailed installation, configuration, and usage instructions, please refer to:
 - 📚 [Quick Start Guide](docs/dev_docs/getting_started.md) - Complete installation and configuration steps
+- ⚙️ [Configuration Guide](docs/usage/CONFIGURATION_GUIDE.md) - Detailed environment variables and service configuration
 - 📖 [API Usage Guide](docs/dev_docs/api_usage_guide.md) - API endpoints and data format details
 - 🔧 [Development Guide](docs/dev_docs/development_guide.md) - Architecture design and development best practices
 - 🚀 [Bootstrap Usage](docs/dev_docs/bootstrap_usage.md) - Script runner usage instructions
@@ -736,6 +746,8 @@ This section can include:
 Thanks to the following projects and communities for their inspiration and support:
 
 - [Memos](https://github.com/usememos/memos) - Thank you to the Memos project for providing a comprehensive, standardized open-source note-taking service that has provided valuable inspiration for our memory system design.
+
+- [Nemori](https://github.com/nemori-ai/nemori) - Thank you to the Nemori project for providing a self-organising long-term memory substrate for agentic LLM workflows that has provided valuable inspiration for our memory system design.
 
 ---
 

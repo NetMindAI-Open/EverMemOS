@@ -20,12 +20,14 @@ from openai import AsyncOpenAI, BadRequestError
 
 from core.di.utils import get_bean
 from core.di.decorators import service
+from memory_layer.constants import VECTORIZE_DIMENSIONS
 
 logger = logging.getLogger(__name__)
 
 
 class VectorizeProvider(str, Enum):
     """向量化服务提供商枚举"""
+
     DEEPINFRA = "deepinfra"
     VLLM = "vllm"
 
@@ -55,19 +57,25 @@ class VectorizeConfig:
             try:
                 self.provider = VectorizeProvider(provider_str)
             except ValueError:
-                logger.error(f"Invalid provider '{provider_str}', expected one of {[p.value for p in VectorizeProvider]}")
-                raise ValueError(f"Invalid provider '{provider_str}', expected one of {[p.value for p in VectorizeProvider]}")
+                logger.error(
+                    f"Invalid provider '{provider_str}', expected one of {[p.value for p in VectorizeProvider]}"
+                )
+                raise ValueError(
+                    f"Invalid provider '{provider_str}', expected one of {[p.value for p in VectorizeProvider]}"
+                )
 
         if not self.api_key:
-            self.api_key = os.getenv("VECTORIZE_API_KEY") or os.getenv("DEEPINFRA_API_KEY", "")
+            self.api_key = os.getenv("VECTORIZE_API_KEY") or os.getenv(
+                "DEEPINFRA_API_KEY", ""
+            )
             if self.provider == VectorizeProvider.VLLM and not self.api_key:
-                 self.api_key = "EMPTY"
+                self.api_key = "EMPTY"
 
         if not self.base_url:
             default_url = "https://api.deepinfra.com/v1/openai"
             if self.provider == VectorizeProvider.VLLM:
-                 default_url = "http://localhost:8000/v1" # Standard vLLM port
-            
+                default_url = "http://localhost:8000/v1"  # Standard vLLM port
+
             self.base_url = os.getenv("VECTORIZE_BASE_URL", default_url)
 
         if not self.model:
@@ -78,7 +86,10 @@ class VectorizeConfig:
         if self.max_retries == 3:
             self.max_retries = int(os.getenv("VECTORIZE_MAX_RETRIES", "3"))
         if self.batch_size == 10:
-            self.batch_size = int(os.getenv("VECTORIZE_BATCH_SIZE") or os.getenv("DEEPINFRA_BATCH_SIZE", "10"))
+            self.batch_size = int(
+                os.getenv("VECTORIZE_BATCH_SIZE")
+                or os.getenv("DEEPINFRA_BATCH_SIZE", "10")
+            )
         if self.max_concurrent_requests == 5:
             self.max_concurrent_requests = int(
                 os.getenv("VECTORIZE_MAX_CONCURRENT", "5")
@@ -86,11 +97,12 @@ class VectorizeConfig:
         if self.encoding_format == "float":
             self.encoding_format = os.getenv("VECTORIZE_ENCODING_FORMAT", "float")
         if self.dimensions == 1024:
-            self.dimensions = int(os.getenv("VECTORIZE_DIMENSIONS", "1024"))
+            self.dimensions = VECTORIZE_DIMENSIONS
 
 
 class VectorizeError(Exception):
     """Vectorize API错误异常类"""
+
     pass
 
 
@@ -134,6 +146,16 @@ class VectorizeServiceInterface(ABC):
     ) -> List[List[np.ndarray]]:
         pass
 
+    @abstractmethod
+    def get_model_name(self) -> str:
+        """
+        获取当前使用的模型名称
+
+        Returns:
+            str: 模型名称
+        """
+        pass
+
 
 @service(name="vectorize_service", primary=True)
 class VectorizeService(VectorizeServiceInterface):
@@ -145,6 +167,7 @@ class VectorizeService(VectorizeServiceInterface):
         if config is None:
             try:
                 from core.di import get_bean
+
                 config = get_bean("vectorize_config")
                 logger.info("Vectorize config source: DI bean 'vectorize_config'")
             except Exception:
@@ -153,12 +176,14 @@ class VectorizeService(VectorizeServiceInterface):
 
         # 规范化配置
         base_url = config.base_url or ""
-        if base_url and not (base_url.startswith("http://") or base_url.startswith("https://")):
-             # 默认根据provider推断，或者 defaulting to https
+        if base_url and not (
+            base_url.startswith("http://") or base_url.startswith("https://")
+        ):
+            # 默认根据provider推断，或者 defaulting to https
             base_url = f"https://{base_url}"
-            
+
         config.base_url = base_url
-        
+
         self.config = config
         self.client: Optional[AsyncOpenAI] = None
         self._semaphore = asyncio.Semaphore(config.max_concurrent_requests)
@@ -191,16 +216,27 @@ class VectorizeService(VectorizeServiceInterface):
             await self.client.close()
             self.client = None
 
-    async def _make_request(self, texts: List[str], instruction: Optional[str] = None, is_query: bool = False):
+    async def _make_request(
+        self,
+        texts: List[str],
+        instruction: Optional[str] = None,
+        is_query: bool = False,
+    ):
         await self._ensure_client()
         if not self.config.model:
             raise VectorizeError("Embedding model is not configured.")
 
         # 如果 is_query=True，使用 instruction 格式包装文本
         if is_query:
-            default_instruction = "Given a search query, retrieve relevant passages that answer the query"
-            final_instruction = instruction if instruction is not None else default_instruction
-            formatted_texts = [f"Instruct: {final_instruction}\nQuery: {text}" for text in texts]
+            default_instruction = (
+                "Given a search query, retrieve relevant passages that answer the query"
+            )
+            final_instruction = (
+                instruction if instruction is not None else default_instruction
+            )
+            formatted_texts = [
+                f"Instruct: {final_instruction}\nQuery: {text}" for text in texts
+            ]
         else:
             formatted_texts = texts
 
@@ -212,7 +248,7 @@ class VectorizeService(VectorizeServiceInterface):
                         "input": formatted_texts,
                         "encoding_format": self.config.encoding_format,
                     }
-                    
+
                     # Only add dimensions parameter if provider is NOT vllm
                     # vLLM typically doesn't support 'dimensions' param in OpenAI API compatibility layer yet
                     # We handle vLLM via client-side truncation in _parse_embeddings_response
@@ -245,14 +281,19 @@ class VectorizeService(VectorizeServiceInterface):
         response = await self._make_request([text], instruction, is_query)
         if not response.data:
             raise VectorizeError("Invalid API response: missing data")
-        
+
         embeddings = self._parse_embeddings_response(response)
         embedding = np.array(embeddings[0], dtype=np.float32)
-        usage_info = UsageInfo.from_openai_usage(response.usage) if response.usage else None
+        usage_info = (
+            UsageInfo.from_openai_usage(response.usage) if response.usage else None
+        )
         return embedding, usage_info
 
     async def get_embeddings(
-        self, texts: List[str], instruction: Optional[str] = None, is_query: bool = False
+        self,
+        texts: List[str],
+        instruction: Optional[str] = None,
+        is_query: bool = False,
     ) -> List[np.ndarray]:
         if not texts:
             return []
@@ -273,28 +314,37 @@ class VectorizeService(VectorizeServiceInterface):
     def _parse_embeddings_response(self, response) -> List[np.ndarray]:
         if not response.data:
             raise VectorizeError("Invalid API response: missing data")
-        
+
         embeddings = []
         for item in response.data:
-             emb = np.array(item.embedding, dtype=np.float32)
-             # Client-side truncation if configured and necessary
-             if self.config.dimensions and self.config.dimensions > 0 and len(emb) > self.config.dimensions:
-                 emb = emb[:self.config.dimensions]
-                 # Optional: Re-normalize if needed. Usually safer to re-normalize after truncation
-                 # to maintain unit length for cosine similarity.
-                 norm = np.linalg.norm(emb)
-                 if norm > 0:
-                     emb = emb / norm
-             
-             embeddings.append(emb)
+            emb = np.array(item.embedding, dtype=np.float32)
+            # Client-side truncation if configured and necessary
+            if (
+                self.config.dimensions
+                and self.config.dimensions > 0
+                and len(emb) > self.config.dimensions
+            ):
+                emb = emb[: self.config.dimensions]
+                # Optional: Re-normalize if needed. Usually safer to re-normalize after truncation
+                # to maintain unit length for cosine similarity.
+                norm = np.linalg.norm(emb)
+                if norm > 0:
+                    emb = emb / norm
+
+            embeddings.append(emb)
         return embeddings
 
     async def get_embeddings_batch(
-        self, text_batches: List[List[str]], instruction: Optional[str] = None, is_query: bool = False
+        self,
+        text_batches: List[List[str]],
+        instruction: Optional[str] = None,
+        is_query: bool = False,
     ) -> List[List[np.ndarray]]:
-        tasks = [self.get_embeddings(batch, instruction, is_query) for batch in text_batches]
+        tasks = [
+            self.get_embeddings(batch, instruction, is_query) for batch in text_batches
+        ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        
+
         embeddings_batches = []
         for i, result in enumerate(results):
             if isinstance(result, Exception):
@@ -307,7 +357,7 @@ class VectorizeService(VectorizeServiceInterface):
     def get_model_name(self) -> str:
         """
         获取当前使用的模型名称
-        
+
         Returns:
             str: 模型名称
         """
@@ -330,14 +380,31 @@ def get_vectorize_service() -> VectorizeServiceInterface:
 
 
 # 便捷函数
-async def get_text_embedding(text: str, instruction: Optional[str] = None, is_query: bool = False) -> np.ndarray:
+async def get_text_embedding(
+    text: str, instruction: Optional[str] = None, is_query: bool = False
+) -> np.ndarray:
     return await get_vectorize_service().get_embedding(text, instruction, is_query)
 
-async def get_text_embeddings(texts: List[str], instruction: Optional[str] = None, is_query: bool = False) -> List[np.ndarray]:
+
+async def get_text_embeddings(
+    texts: List[str], instruction: Optional[str] = None, is_query: bool = False
+) -> List[np.ndarray]:
     return await get_vectorize_service().get_embeddings(texts, instruction, is_query)
 
-async def get_text_embeddings_batch(text_batches: List[List[str]], instruction: Optional[str] = None, is_query: bool = False) -> List[List[np.ndarray]]:
-    return await get_vectorize_service().get_embeddings_batch(text_batches, instruction, is_query)
 
-async def get_text_embedding_with_usage(text: str, instruction: Optional[str] = None, is_query: bool = False) -> Tuple[np.ndarray, Optional[UsageInfo]]:
-    return await get_vectorize_service().get_embedding_with_usage(text, instruction, is_query)
+async def get_text_embeddings_batch(
+    text_batches: List[List[str]],
+    instruction: Optional[str] = None,
+    is_query: bool = False,
+) -> List[List[np.ndarray]]:
+    return await get_vectorize_service().get_embeddings_batch(
+        text_batches, instruction, is_query
+    )
+
+
+async def get_text_embedding_with_usage(
+    text: str, instruction: Optional[str] = None, is_query: bool = False
+) -> Tuple[np.ndarray, Optional[UsageInfo]]:
+    return await get_vectorize_service().get_embedding_with_usage(
+        text, instruction, is_query
+    )

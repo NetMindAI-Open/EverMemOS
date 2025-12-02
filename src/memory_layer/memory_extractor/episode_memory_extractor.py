@@ -29,7 +29,7 @@ from ..prompts.eval.episode_mem_prompts import (
 from ..llm.llm_provider import LLMProvider
 
 from .base_memory_extractor import MemoryExtractor, MemoryExtractRequest
-from ..types import MemoryType, Memory, RawDataType, MemCell
+from api_specs.memory_types import MemoryType, Memory, RawDataType, MemCell
 
 from common_utils.datetime_utils import get_now_with_timezone
 from agentic_layer.vectorize_service import get_vectorize_service

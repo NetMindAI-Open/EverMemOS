@@ -11,7 +11,7 @@ from .llm.llm_provider import LLMProvider
 from .memcell_extractor.conv_memcell_extractor import ConvMemCellExtractor
 from .memcell_extractor.base_memcell_extractor import RawData
 from .memcell_extractor.conv_memcell_extractor import ConversationMemCellExtractRequest
-from .types import MemCell, RawDataType, MemoryType, ForesightItem
+from api_specs.memory_types import MemCell, RawDataType, MemoryType, ForesightItem
 from .memory_extractor.episode_memory_extractor import (
     EpisodeMemoryExtractor,
     EpisodeMemoryExtractRequest,
@@ -31,24 +31,6 @@ from .memcell_extractor.base_memcell_extractor import StatusResult
 
 
 logger = get_logger(__name__)
-
-
-@dataclass
-class MemorizeRequest:
-    history_raw_data_list: list[RawData]
-    new_raw_data_list: list[RawData]
-    raw_data_type: RawDataType
-    # 整个group全量的user_id列表
-    user_id_list: List[str]
-    group_id: Optional[str] = None
-    group_name: Optional[str] = None
-    current_time: Optional[datetime] = None
-
-
-@dataclass
-class MemorizeOfflineRequest:
-    memorize_from: datetime
-    memorize_to: datetime
 
 
 class MemoryManager:
@@ -127,8 +109,8 @@ class MemoryManager:
         )
 
         return memcell, status_result
-    
-# TODO:添加 username
+
+    # TODO:添加 username
     async def extract_memory(
         self,
         memcell: MemCell,

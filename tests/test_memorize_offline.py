@@ -19,7 +19,7 @@ from typing import Optional
 
 # 添加src目录到Python路径
 
-from memory_layer.memory_manager import MemorizeOfflineRequest
+from api_specs.dtos.memory_command import MemorizeOfflineRequest
 from biz_layer.tanka_memorize import memorize_offline
 from common_utils.datetime_utils import get_now_with_timezone
 from core.observation.logger import get_logger

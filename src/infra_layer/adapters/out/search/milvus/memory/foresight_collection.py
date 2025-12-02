@@ -11,11 +11,12 @@ from core.oxm.milvus.milvus_collection_base import (
     MilvusCollectionWithSuffix,
     IndexConfig,
 )
+from memory_layer.constants import VECTORIZE_DIMENSIONS
 
 
 class ForesightCollection(MilvusCollectionWithSuffix):
     """
-    前瞻 Milvus Collection
+    前瞻 Milvus Collection (原 SemanticMemory)
     
     同时支持个人前瞻和群组前瞻，通过 group_id 字段区分。
 
@@ -42,7 +43,7 @@ class ForesightCollection(MilvusCollectionWithSuffix):
             FieldSchema(
                 name="vector",
                 dtype=DataType.FLOAT_VECTOR,
-                dim=1024,  # BAAI/bge-m3 模型的向量维度
+                dim=VECTORIZE_DIMENSIONS,  # BAAI/bge-m3 模型的向量维度
                 description="文本向量",
             ),
             FieldSchema(
@@ -82,9 +83,7 @@ class ForesightCollection(MilvusCollectionWithSuffix):
                 description="前瞻结束时间戳",
             ),
             FieldSchema(
-                name="duration_days",
-                dtype=DataType.INT64,
-                description="持续天数",
+                name="duration_days", dtype=DataType.INT64, description="持续天数"
             ),
             FieldSchema(
                 name="content",
@@ -142,4 +141,3 @@ class ForesightCollection(MilvusCollectionWithSuffix):
         IndexConfig(field_name="start_time", index_type="AUTOINDEX"),
         IndexConfig(field_name="end_time", index_type="AUTOINDEX"),
     ]
-

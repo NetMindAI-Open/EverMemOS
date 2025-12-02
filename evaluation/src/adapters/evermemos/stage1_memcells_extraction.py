@@ -40,7 +40,7 @@ from memory_layer.memory_extractor.event_log_extractor import EventLogExtractor
 from memory_layer.memory_extractor.foresight_extractor import (
     ForesightExtractor,
 )
-from memory_layer.types import RawDataType
+from api_specs.memory_types import RawDataType
 
 # Clustering and Profile management components
 from memory_layer.cluster_manager import (

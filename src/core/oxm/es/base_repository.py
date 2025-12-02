@@ -93,7 +93,7 @@ class BaseRepository(ABC, Generic[T]):
             logger.debug(
                 "✅ 创建文档成功 [%s]: %s",
                 self.model_name,
-                getattr(document, 'meta', {}).get('id', 'unknown'),
+                # getattr(document, 'meta', {}).get('id', 'unknown'),
             )
             return document
         except Exception as e:

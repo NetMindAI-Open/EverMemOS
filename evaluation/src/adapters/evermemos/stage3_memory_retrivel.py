@@ -327,11 +327,10 @@ async def lightweight_retrieval(
     """
     Lightweight fast retrieval (no LLM calls, pure algorithmic retrieval).
     
-    Process:
-    1. Execute Embedding and BM25 retrieval in parallel
-    2. Each retrieves Top-50 candidates
-    3. Fuse using RRF
-    4. Return Top-20 results
+    Supports three search modes (controlled by config.lightweight_search_mode):
+    - "bm25_only": Only use BM25 search (fast, lexical matching)
+    - "hybrid": BM25 + Embedding + RRF fusion (balanced)
+    - "emb_only": Only use Embedding search (semantic matching)
     
     Advantages:
     - Fast: no LLM calls, pure vector/lexical retrieval
@@ -355,49 +354,77 @@ async def lightweight_retrieval(
     """
     start_time = time.time()
     
+    # Get search mode from config (default to "bm25_only")
+    search_mode = getattr(config, 'lightweight_search_mode', 'bm25_only')
+    
     metadata = {
         "retrieval_mode": "lightweight",
+        "lightweight_search_mode": search_mode,
         "emb_count": 0,
         "bm25_count": 0,
         "final_count": 0,
         "total_latency_ms": 0.0,
     }
     
-    # Execute Embedding and BM25 retrieval in parallel
-    emb_task = search_with_emb_index(
-        query, 
-        emb_index, 
-        top_n=config.lightweight_emb_top_n  # Default 50
-    )
-    bm25_task = asyncio.to_thread(
-        search_with_bm25_index, 
-        query, 
-        bm25, 
-        docs, 
-        config.lightweight_bm25_top_n  # Default 50
-    )
-    
-    emb_results, bm25_results = await asyncio.gather(emb_task, bm25_task)
-    
-    metadata["emb_count"] = len(emb_results)
-    metadata["bm25_count"] = len(bm25_results)
-    
-    # RRF fusion
-    if not emb_results and not bm25_results:
-        metadata["total_latency_ms"] = (time.time() - start_time) * 1000
-        return [], metadata
-    elif not emb_results:
-        final_results = bm25_results[:config.lightweight_final_top_n]
-    elif not bm25_results:
-        final_results = emb_results[:config.lightweight_final_top_n]
-    else:
-        # Use RRF fusion
-        fused_results = reciprocal_rank_fusion(
-            emb_results, 
-            bm25_results, 
-            k=60  # Standard RRF parameter
+    # Execute retrieval based on search mode
+    if search_mode == "bm25_only":
+        # BM25 only mode: fast lexical matching
+        bm25_results = await asyncio.to_thread(
+            search_with_bm25_index, 
+            query, 
+            bm25, 
+            docs, 
+            config.lightweight_bm25_top_n
         )
-        final_results = fused_results[:config.lightweight_final_top_n]  # Default 20
+        metadata["bm25_count"] = len(bm25_results)
+        final_results = bm25_results[:config.lightweight_final_top_n]
+        
+    elif search_mode == "emb_only":
+        # Embedding only mode: semantic matching
+        emb_results = await search_with_emb_index(
+            query, 
+            emb_index, 
+            top_n=config.lightweight_emb_top_n
+        )
+        metadata["emb_count"] = len(emb_results)
+        final_results = emb_results[:config.lightweight_final_top_n]
+        
+    else:
+        # Hybrid mode (default fallback): BM25 + Embedding + RRF fusion
+        # Execute Embedding and BM25 retrieval in parallel
+        emb_task = search_with_emb_index(
+            query, 
+            emb_index, 
+            top_n=config.lightweight_emb_top_n
+        )
+        bm25_task = asyncio.to_thread(
+            search_with_bm25_index, 
+            query, 
+            bm25, 
+            docs, 
+            config.lightweight_bm25_top_n
+        )
+        
+        emb_results, bm25_results = await asyncio.gather(emb_task, bm25_task)
+        
+        metadata["emb_count"] = len(emb_results)
+        metadata["bm25_count"] = len(bm25_results)
+        
+        # RRF fusion
+        if not emb_results and not bm25_results:
+            final_results = []
+        elif not emb_results:
+            final_results = bm25_results[:config.lightweight_final_top_n]
+        elif not bm25_results:
+            final_results = emb_results[:config.lightweight_final_top_n]
+        else:
+            # Use RRF fusion
+            fused_results = reciprocal_rank_fusion(
+                emb_results, 
+                bm25_results, 
+                k=60  # Standard RRF parameter
+            )
+            final_results = fused_results[:config.lightweight_final_top_n]
     
     metadata["final_count"] = len(final_results)
     metadata["total_latency_ms"] = (time.time() - start_time) * 1000
@@ -648,14 +675,14 @@ async def agentic_retrieval(
         metadata["total_latency_ms"] = (time.time() - start_time) * 1000
         return [], metadata
     
-    # Rerank Top 20 to Top 5 for Sufficiency Check
-    print(f"  [Rerank] Reranking Top 20 to get Top 5 for sufficiency check...")
+    # Rerank Top 20 to Top 10 for Sufficiency Check
+    print(f"  [Rerank] Reranking Top 20 to get Top 10 for sufficiency check...")
     
     if config.use_reranker:
-        reranked_top5 = await reranker_search(
+        reranked_top10 = await reranker_search(
             query=query,
             results=round1_top20,
-            top_n=5,
+            top_n=10,
             reranker_instruction=config.reranker_instruction,
             batch_size=config.reranker_batch_size,
             max_retries=config.reranker_max_retries,
@@ -664,41 +691,43 @@ async def agentic_retrieval(
             fallback_threshold=config.reranker_fallback_threshold,
             config=config,
         )
-        metadata["round1_reranked_count"] = len(reranked_top5)
-        print(f"  [Rerank] Got Top 5 for sufficiency check")
+        metadata["round1_reranked_count"] = len(reranked_top10)
+        print(f"  [Rerank] Got Top 10 for sufficiency check")
     else:
-        # If not using reranker, take first 5 directly
-        reranked_top5 = round1_top20[:5]
-        metadata["round1_reranked_count"] = 5
-        print(f"  [No Rerank] Using original Top 5 for sufficiency check")
+        # If not using reranker, take first 10 directly
+        reranked_top10 = round1_top20[:10]
+        metadata["round1_reranked_count"] = 10
+        print(f"  [No Rerank] Using original Top 10 for sufficiency check")
     
-    if not reranked_top5:
+    if not reranked_top10:
         print(f"  [Warning] Reranking failed, falling back to original Top 20")
         metadata["total_latency_ms"] = (time.time() - start_time) * 1000
         return round1_top20, metadata
     
     # LLM Sufficiency Check
-    print(f"  [LLM] Checking sufficiency on Top 5...")
+    print(f"  [LLM] Checking sufficiency on Top 10...")
     
-    is_sufficient, reasoning, missing_info = await agentic_utils.check_sufficiency(
+    is_sufficient, reasoning, missing_info, key_info = await agentic_utils.check_sufficiency(
         query=query,
-        results=reranked_top5,  # Use reranked Top 5
+        results=reranked_top10,  # Use reranked Top 10
         llm_provider=llm_provider,  # Use LLMProvider
         llm_config=llm_config,
-        max_docs=5  # Explicitly check only 5 documents
+        max_docs=10  # Explicitly check only 10 documents
     )
     
     metadata["is_sufficient"] = is_sufficient
     metadata["reasoning"] = reasoning
+    metadata["key_information_found"] = key_info  # 新增：记录已找到的关键信息
     
     print(f"  [LLM] Result: {'✅ Sufficient' if is_sufficient else '❌ Insufficient'}")
     print(f"  [LLM] Reasoning: {reasoning}")
+    if key_info:  # 新增：打印已找到的关键信息
+        print(f"  [LLM] Key Info Found: {', '.join(key_info)}")
     
-    # If sufficient: return original Round 1 Top 20
     if is_sufficient:
-        print(f"  [Decision] Sufficient! Using original Round 1 Top 20 results")
+        print(f"  [Decision] Sufficient! Using reranked Top 10 results")
         
-        final_results = round1_top20  # Return original Top 20 (not reranked)
+        final_results = reranked_top10
         metadata["final_count"] = len(final_results)
         metadata["total_latency_ms"] = (time.time() - start_time) * 1000
         
@@ -720,11 +749,12 @@ async def agentic_retrieval(
         # Generate 2-3 complementary queries
         refined_queries, query_strategy = await agentic_utils.generate_multi_queries(
             original_query=query,
-            results=reranked_top5,  # Based on Top 5 generate improved queries
+            results=reranked_top10,  # Based on Top 10 generate improved queries
             missing_info=missing_info,
             llm_provider=llm_provider,  # Use LLMProvider
             llm_config=llm_config,
-            max_docs=5,
+            key_info=key_info,  # 新增：传入已找到的关键信息
+            max_docs=10,
             num_queries=3  # Expect to generate 3 queries
         )
         
@@ -780,11 +810,12 @@ async def agentic_retrieval(
         
         refined_query = await agentic_utils.generate_refined_query(
             original_query=query,
-            results=reranked_top5,
+            results=reranked_top10,
             missing_info=missing_info,
             llm_provider=llm_provider,
             llm_config=llm_config,
-            max_docs=5
+            key_info=key_info,  # 新增：传入已找到的关键信息
+            max_docs=10
         )
         
         metadata["refined_query"] = refined_query

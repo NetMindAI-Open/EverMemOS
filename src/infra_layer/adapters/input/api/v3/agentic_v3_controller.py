@@ -9,18 +9,13 @@ import logging
 from typing import Any, Dict
 from fastapi import HTTPException, Request as FastAPIRequest
 
-from agentic_layer.schemas import RetrieveMethod
 from core.di.decorators import controller
 from core.di import get_bean_by_type
 from core.interface.controller.base_controller import BaseController, post
 from core.constants.errors import ErrorCode, ErrorStatus
 from agentic_layer.memory_manager import MemoryManager
-from agentic_layer.converter import (
-    _handle_conversation_format,
-    convert_dict_to_fetch_mem_request,
-    convert_dict_to_retrieve_mem_request,
-)
-from agentic_layer.dtos.memory_query import ConversationMetaRequest, UserDetail
+from api_specs.request_converter import handle_conversation_format
+from api_specs.dtos.memory_query import ConversationMetaRequest, UserDetail
 from infra_layer.adapters.input.api.mapper.group_chat_converter import (
     convert_simple_message_to_memorize_input,
 )
@@ -32,7 +27,6 @@ from infra_layer.adapters.out.persistence.repository.conversation_meta_raw_repos
     ConversationMetaRawRepository,
 )
 from component.redis_provider import RedisProvider
-import json
 
 logger = logging.getLogger(__name__)
 
@@ -197,26 +191,30 @@ class AgenticV3Controller(BaseController):
 
             # 4. 转换为 MemorizeRequest 对象并调用 memory_manager
             logger.info("开始处理记忆请求")
-            memorize_request = await _handle_conversation_format(memorize_input)
-            memories = await self.memory_manager.memorize(memorize_request)
+            memorize_request = await handle_conversation_format(memorize_input)
+            request_id = await self.memory_manager.memorize(memorize_request)
 
             # 5. 返回统一格式的响应
-            memory_count = len(memories) if memories else 0
-            logger.info("处理记忆请求完成，保存了 %s 条记忆", memory_count)
-
-            # 优化返回信息，帮助用户理解运行状态
-            if memory_count > 0:
-                message = f"Extracted {memory_count} memories"
+            if request_id:
+                # 检测到边界，已提交到 Worker 队列异步处理
+                logger.info("记忆请求已提交: request_id=%s", request_id)
+                return {
+                    "status": ErrorStatus.OK.value,
+                    "message": "Memory extraction submitted",
+                    "result": {
+                        "request_id": request_id,
+                        "status_info": "processing",
+                    },
+                }
             else:
-                message = "Message queued, awaiting boundary detection"
-
+                # 未检测到边界，消息已累积
+                logger.info("消息已累积，等待边界检测")
             return {
                 "status": ErrorStatus.OK.value,
-                "message": message,
+                    "message": "Message queued, awaiting boundary detection",
                 "result": {
-                    "saved_memories": memories,
-                    "count": memory_count,
-                    "status_info": "accumulated" if memory_count == 0 else "extracted",
+                        "request_id": None,
+                        "status_info": "accumulated",
                 },
             }
 

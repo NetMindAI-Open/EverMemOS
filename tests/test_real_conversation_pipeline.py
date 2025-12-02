@@ -21,9 +21,9 @@ from core.observation.logger import get_logger
 
 # 导入要测试的模块
 from biz_layer.tanka_memorize import memorize
-from memory_layer.memory_manager import MemorizeRequest
+from api_specs.dtos.memory_command import MemorizeRequest
 from memory_layer.memcell_extractor.base_memcell_extractor import RawData
-from memory_layer.types import RawDataType, MemoryType
+from api_specs.memory_types import RawDataType, MemoryType
 
 # 获取日志记录器
 logger = get_logger(__name__)

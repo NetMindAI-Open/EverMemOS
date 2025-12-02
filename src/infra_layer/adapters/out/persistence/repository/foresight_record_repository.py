@@ -4,16 +4,19 @@ ForesightRecord Repository
 提供通用前瞻的 CRUD 操作和查询功能。
 """
 
-from datetime import datetime
-from typing import List, Optional
-from motor.motor_asyncio import AsyncIOMotorClientSession
+from typing import List, Optional, Type, TypeVar, Union
+from pymongo.asynchronous.client_session import AsyncClientSession
 from bson import ObjectId
 from core.observation.logger import get_logger
 from core.di.decorators import repository
 from core.oxm.mongo.base_repository import BaseRepository
 from infra_layer.adapters.out.persistence.document.memory.foresight_record import (
     ForesightRecord,
+    ForesightRecordProjection,
 )
+
+# 定义泛型类型变量
+T = TypeVar('T', ForesightRecord, ForesightRecordProjection)
 
 logger = get_logger(__name__)
 
@@ -21,7 +24,7 @@ logger = get_logger(__name__)
 @repository("foresight_record_repository", primary=True)
 class ForesightRecordRawRepository(BaseRepository[ForesightRecord]):
     """
-    个人前瞻原始数据仓库
+    个人前瞻原始数据仓库 (原 SemanticMemoryRecordRawRepository)
     
     提供个人前瞻的 CRUD 操作和基础查询功能。
     注意：向量应在提取时生成，此 Repository 不负责生成向量。
@@ -35,7 +38,7 @@ class ForesightRecordRawRepository(BaseRepository[ForesightRecord]):
     async def save(
         self,
         foresight: ForesightRecord,
-        session: Optional[AsyncIOMotorClientSession] = None,
+        session: Optional[AsyncClientSession] = None,
     ) -> Optional[ForesightRecord]:
         """
         保存个人前瞻
@@ -43,7 +46,7 @@ class ForesightRecordRawRepository(BaseRepository[ForesightRecord]):
         Args:
             foresight: 个人前瞻对象
             session: 可选的 MongoDB 会话，用于事务支持
-            
+
         Returns:
             保存的 ForesightRecord 或 None
         """
@@ -63,23 +66,40 @@ class ForesightRecordRawRepository(BaseRepository[ForesightRecord]):
     async def get_by_id(
         self,
         memory_id: str,
-        session: Optional[AsyncIOMotorClientSession] = None,
-    ) -> Optional[ForesightRecord]:
+        session: Optional[AsyncClientSession] = None,
+        model: Optional[Type[T]] = None,
+    ) -> Optional[Union[ForesightRecord, ForesightRecordProjection]]:
         """
         根据ID获取个人前瞻
         
         Args:
             memory_id: 记忆ID
             session: 可选的 MongoDB 会话，用于事务支持
-            
+            model: 返回的模型类型，默认为 ForesightRecord（完整版本）
+
         Returns:
-            ForesightRecord 或 None
+            指定类型的前瞻对象或 None
         """
         try:
             object_id = ObjectId(memory_id)
-            result = await self.model.find_one({"_id": object_id}, session=session)
+
+            # 如果未指定 model，使用完整版本
+            target_model = model if model is not None else self.model
+
+            # 根据 model 类型决定是否使用 projection
+            if target_model == self.model:
+                result = await self.model.find_one({"_id": object_id}, session=session)
+            else:
+                result = await self.model.find_one(
+                    {"_id": object_id}, projection_model=target_model, session=session
+                )
+
             if result:
-                logger.debug("✅ 根据ID获取个人前瞻成功: %s", memory_id)
+                logger.debug(
+                    "✅ 根据ID获取个人前瞻成功: %s (model=%s)",
+                    memory_id,
+                    target_model.__name__,
+                )
             else:
                 logger.debug("ℹ️  未找到个人前瞻: id=%s", memory_id)
             return result
@@ -90,26 +110,42 @@ class ForesightRecordRawRepository(BaseRepository[ForesightRecord]):
     async def get_by_parent_episode_id(
         self,
         parent_episode_id: str,
-        session: Optional[AsyncIOMotorClientSession] = None,
-    ) -> List[ForesightRecord]:
+        session: Optional[AsyncClientSession] = None,
+        model: Optional[Type[T]] = None,
+    ) -> List[Union[ForesightRecord, ForesightRecordProjection]]:
         """
         根据父情景记忆ID获取所有前瞻
         
         Args:
             parent_episode_id: 父情景记忆ID
             session: 可选的 MongoDB 会话，用于事务支持
-            
+            model: 返回的模型类型，默认为 ForesightRecord（完整版本）
+
         Returns:
-            ForesightRecord 列表
+            指定类型的前瞻对象列表
         """
         try:
-            results = await self.model.find(
-                {"parent_episode_id": parent_episode_id}, session=session
-            ).to_list()
+            # 如果未指定 model，使用完整版本
+            target_model = model if model is not None else self.model
+
+            # 根据 model 类型决定是否使用 projection
+            if target_model == self.model:
+                query = self.model.find(
+                    {"parent_episode_id": parent_episode_id}, session=session
+                )
+            else:
+                query = self.model.find(
+                    {"parent_episode_id": parent_episode_id},
+                    projection_model=target_model,
+                    session=session,
+                )
+
+            results = await query.to_list()
             logger.debug(
-                "✅ 根据父情景记忆ID获取前瞻成功: %s, 找到 %d 条记录",
+                "✅ 根据父情景记忆ID获取前瞻成功: %s, 找到 %d 条记录 (model=%s)",
                 parent_episode_id,
                 len(results),
+                target_model.__name__,
             )
             return results
         except Exception as e:
@@ -121,8 +157,9 @@ class ForesightRecordRawRepository(BaseRepository[ForesightRecord]):
         user_id: str,
         limit: Optional[int] = None,
         skip: Optional[int] = None,
-        session: Optional[AsyncIOMotorClientSession] = None,
-    ) -> List[ForesightRecord]:
+        session: Optional[AsyncClientSession] = None,
+        model: Optional[Type[T]] = None,
+    ) -> List[Union[ForesightRecord, ForesightRecordProjection]]:
         """
         根据用户ID获取前瞻列表
         
@@ -131,23 +168,34 @@ class ForesightRecordRawRepository(BaseRepository[ForesightRecord]):
             limit: 限制返回数量
             skip: 跳过数量
             session: 可选的 MongoDB 会话，用于事务支持
-            
+            model: 返回的模型类型，默认为 ForesightRecord（完整版本）
+
         Returns:
-            ForesightRecord 列表
+            指定类型的前瞻对象列表
         """
         try:
-            query = self.model.find({"user_id": user_id}, session=session)
-            
+            # 如果未指定 model，使用完整版本
+            target_model = model if model is not None else self.model
+
+            # 根据 model 类型决定是否使用 projection
+            if target_model == self.model:
+                query = self.model.find({"user_id": user_id}, session=session)
+            else:
+                query = self.model.find(
+                    {"user_id": user_id}, projection_model=target_model, session=session
+                )
+
             if skip:
                 query = query.skip(skip)
             if limit:
                 query = query.limit(limit)
-                
+
             results = await query.to_list()
             logger.debug(
-                "✅ 根据用户ID获取前瞻成功: %s, 找到 %d 条记录",
+                "✅ 根据用户ID获取前瞻成功: %s, 找到 %d 条记录 (model=%s)",
                 user_id,
                 len(results),
+                target_model.__name__,
             )
             return results
         except Exception as e:
@@ -155,9 +203,7 @@ class ForesightRecordRawRepository(BaseRepository[ForesightRecord]):
             return []
 
     async def delete_by_id(
-        self,
-        memory_id: str,
-        session: Optional[AsyncIOMotorClientSession] = None,
+        self, memory_id: str, session: Optional[AsyncClientSession] = None
     ) -> bool:
         """
         根据ID删除个人前瞻
@@ -165,7 +211,7 @@ class ForesightRecordRawRepository(BaseRepository[ForesightRecord]):
         Args:
             memory_id: 记忆ID
             session: 可选的 MongoDB 会话，用于事务支持
-            
+
         Returns:
             是否删除成功
         """
@@ -173,7 +219,7 @@ class ForesightRecordRawRepository(BaseRepository[ForesightRecord]):
             object_id = ObjectId(memory_id)
             result = await self.model.find({"_id": object_id}, session=session).delete()
             success = result.deleted_count > 0 if result else False
-            
+
             if success:
                 logger.info("✅ 删除个人前瞻成功: %s", memory_id)
             else:
@@ -185,9 +231,7 @@ class ForesightRecordRawRepository(BaseRepository[ForesightRecord]):
             return False
 
     async def delete_by_parent_episode_id(
-        self,
-        parent_episode_id: str,
-        session: Optional[AsyncIOMotorClientSession] = None,
+        self, parent_episode_id: str, session: Optional[AsyncClientSession] = None
     ) -> int:
         """
         根据父情景记忆ID删除所有前瞻
@@ -195,7 +239,7 @@ class ForesightRecordRawRepository(BaseRepository[ForesightRecord]):
         Args:
             parent_episode_id: 父情景记忆ID
             session: 可选的 MongoDB 会话，用于事务支持
-            
+
         Returns:
             删除的记录数量
         """
@@ -217,4 +261,3 @@ class ForesightRecordRawRepository(BaseRepository[ForesightRecord]):
 
 # 导出
 __all__ = ["ForesightRecordRawRepository"]
-

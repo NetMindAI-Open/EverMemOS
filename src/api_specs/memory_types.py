@@ -4,9 +4,9 @@ from dataclasses import dataclass
 from datetime import datetime
 from common_utils.datetime_utils import to_iso_format
 
-from agentic_layer.memory_models import MemoryType
+from api_specs.memory_models import MemoryType
 
-import uuid
+
 class RawDataType(Enum):
     """Types of content that can be processed."""
 
@@ -154,6 +154,10 @@ class Memory:
     foresights: Optional[List['ForesightItem']] = None  # 前瞻联想列表
     extend: Optional[Dict[str, Any]] = None
 
+    # 向量和模型
+    vector_model: Optional[str] = None
+    vector: Optional[List[float]] = None
+
     def __post_init__(self):
         pass
 
@@ -236,17 +240,20 @@ class Foresight:
 @dataclass
 class ForesightItem:
     """
-    前瞻联想项目
+    前瞻联想项目 (原 SemanticMemoryItem)
 
     包含时间信息的前瞻联想预测
     """
+
     content: str
     evidence: Optional[str] = None  # 原始证据，支持该联想预测的具体事实（不超过30字）
     start_time: Optional[str] = None  # 事件开始时间，格式：YYYY-MM-DD
     end_time: Optional[str] = None  # 事件结束时间，格式：YYYY-MM-DD
     duration_days: Optional[int] = None  # 持续时间（天数）
     source_episode_id: Optional[str] = None  # 来源事件ID
-    embedding: Optional[List[float]] = None
+    vector: Optional[List[float]] = None
+    vector_model: Optional[str] = None
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "content": self.content,
@@ -255,5 +262,6 @@ class ForesightItem:
             "end_time": self.end_time,
             "duration_days": self.duration_days,
             "source_episode_id": self.source_episode_id,
-            "embedding": self.embedding,
+            "vector": self.vector,
+            "vector_model": self.vector_model,
         }

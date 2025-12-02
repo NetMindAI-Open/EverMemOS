@@ -3,15 +3,9 @@
 """
 
 import pytest
-from datetime import datetime
 
-from agentic_layer.fetch_mem_service import (
-    FakeFetchMemoryService,
-    get_fetch_memory_service,
-    set_fetch_memory_service,
-    find_memories_by_user_id,
-)
-from agentic_layer.memory_models import (
+from agentic_layer.fetch_mem_service import get_fetch_memory_service
+from api_specs.memory_models import (
     MemoryType,
     BaseMemoryModel,
     ProfileModel,
@@ -21,6 +15,8 @@ from agentic_layer.memory_models import (
     EntityModel,
     RelationModel,
     BehaviorHistoryModel,
+    EventLogModel,
+    SemanticMemoryRecordModel,
 )
 
 
@@ -30,7 +26,7 @@ class TestFakeFetchMemoryService:
     @pytest.fixture
     def service(self):
         """创建服务实例"""
-        return FakeFetchMemoryService()
+        return get_fetch_memory_service()
 
     @pytest.mark.asyncio
     async def test_find_by_user_id_base_memory(self, service):
@@ -129,6 +125,31 @@ class TestFakeFetchMemoryService:
         assert all(memory.user_id == "user_001" for memory in response.memories)
 
     @pytest.mark.asyncio
+    async def test_find_by_user_id_personal_event_log(self, service):
+        """测试查找个人事件日志"""
+        response = await service.find_by_user_id(
+            "user_001", MemoryType.PERSONAL_EVENT_LOG, limit=5
+        )
+
+        assert response.total_count > 0
+        assert all(isinstance(memory, EventLogModel) for memory in response.memories)
+        assert all(memory.user_id == "user_001" for memory in response.memories)
+
+    @pytest.mark.asyncio
+    async def test_find_by_user_id_personal_semantic_memory(self, service):
+        """测试查找个人语义记忆"""
+        response = await service.find_by_user_id(
+            "user_001", MemoryType.PERSONAL_SEMANTIC_MEMORY, limit=5
+        )
+
+        assert response.total_count > 0
+        assert all(
+            isinstance(memory, SemanticMemoryRecordModel)
+            for memory in response.memories
+        )
+        # 个人语义记忆的user_id可能为None（群组场景），所以不强制检查
+
+    @pytest.mark.asyncio
     async def test_find_by_user_id_nonexistent_user(self, service):
         """测试查找不存在的用户"""
         response = await service.find_by_user_id(
@@ -167,41 +188,16 @@ class TestFakeFetchMemoryService:
         assert profile1.user_id != profile2.user_id
 
 
-class TestServiceSingleton:
-    """测试服务单例模式"""
-
-    def test_get_fetch_memory_service_singleton(self):
-        """测试获取服务实例是单例"""
-        service1 = get_fetch_memory_service()
-        service2 = get_fetch_memory_service()
-
-        assert service1 is service2
-        assert isinstance(service1, FakeFetchMemoryService)
-
-    def test_set_fetch_memory_service(self):
-        """测试设置服务实例"""
-        original_service = get_fetch_memory_service()
-
-        # 创建新的服务实例
-        new_service = FakeFetchMemoryService()
-        set_fetch_memory_service(new_service)
-
-        # 验证服务已更换
-        current_service = get_fetch_memory_service()
-        assert current_service is new_service
-        assert current_service is not original_service
-
-        # 恢复原服务
-        set_fetch_memory_service(original_service)
-
-
-class TestConvenienceFunction:
-    """测试便捷函数"""
+class TestGetFetchMemoryService:
+    """测试获取服务实例"""
 
     @pytest.mark.asyncio
-    async def test_find_memories_by_user_id(self):
-        """测试便捷函数"""
-        response = await find_memories_by_user_id(
+    async def test_get_fetch_memory_service(self):
+        """测试通过工厂函数获取服务实例"""
+        service = get_fetch_memory_service()
+
+        # 验证服务实例可用
+        response = await service.find_by_user_id(
             "user_001", MemoryType.BASE_MEMORY, limit=3
         )
 

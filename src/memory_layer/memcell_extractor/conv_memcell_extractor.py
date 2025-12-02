@@ -19,10 +19,12 @@ from common_utils.datetime_utils import (
     get_now_with_timezone,
 )
 from ..llm.llm_provider import LLMProvider
-from ..types import RawDataType
+from api_specs.memory_types import RawDataType
 from ..prompts.zh.conv_prompts import CONV_BOUNDARY_DETECTION_PROMPT
 
-from ..prompts.eval.conv_prompts import CONV_BOUNDARY_DETECTION_PROMPT as EVAL_CONV_BOUNDARY_DETECTION_PROMPT
+from ..prompts.eval.conv_prompts import (
+    CONV_BOUNDARY_DETECTION_PROMPT as EVAL_CONV_BOUNDARY_DETECTION_PROMPT,
+)
 from .base_memcell_extractor import (
     MemCellExtractor,
     RawData,
@@ -367,15 +369,7 @@ class ConvMemCellExtractor(MemCellExtractor):
         if should_end:
             # 解析时间戳
             ts_value = history_message_dict_list[-1].get("timestamp")
-            
-            if isinstance(ts_value, str):
-                timestamp = dt_from_iso_format(ts_value.replace("Z", "+00:00"))
-            elif isinstance(ts_value, (int, float)):
-                timestamp = dt_from_timestamp(ts_value)
-            else:
-                timestamp = get_now_with_timezone()
-        
-            # 提取参与者ID
+            timestamp = dt_from_iso_format(ts_value)
             participants = self._extract_participant_ids(history_message_dict_list)
             
             # 生成摘要（优先使用边界检测的主题摘要）
@@ -386,6 +380,9 @@ class ConvMemCellExtractor(MemCellExtractor):
                     fallback_text = last_msg.get("content") or ""
                 elif isinstance(last_msg, str):
                     fallback_text = last_msg
+            summary_text = boundary_detection_result.topic_summary or (
+                fallback_text.strip()[:200] if fallback_text else "会话片段"
+            )
             summary_text = boundary_detection_result.topic_summary or (
                 fallback_text.strip()[:200] if fallback_text else "会话片段"
             )
