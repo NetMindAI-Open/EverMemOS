@@ -166,7 +166,6 @@ class FetchMemoryServiceImpl(FetchMemoryServiceInterface):
 
     def __init__(self):
         """初始化服务"""
-        self._foresight_repo = None
         self._episodic_repo = None
         self._core_repo = None
         self._entity_repo = None
