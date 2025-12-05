@@ -66,7 +66,7 @@ class VectorizeConfig:
 
         if not self.api_key:
             self.api_key = os.getenv("VECTORIZE_API_KEY") or os.getenv(
-                "DEEPINFRA_API_KEY", ""
+                "VECTORIZE_API_KEY", ""
             )
             if self.provider == VectorizeProvider.VLLM and not self.api_key:
                 self.api_key = "EMPTY"
@@ -88,7 +88,7 @@ class VectorizeConfig:
         if self.batch_size == 10:
             self.batch_size = int(
                 os.getenv("VECTORIZE_BATCH_SIZE")
-                or os.getenv("DEEPINFRA_BATCH_SIZE", "10")
+                or os.getenv("VECTORIZE_BATCH_SIZE", "10")
             )
         if self.max_concurrent_requests == 5:
             self.max_concurrent_requests = int(

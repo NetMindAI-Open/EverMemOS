@@ -11,10 +11,6 @@ from core.addons.addonize.di_setup import (
     setup_dependency_injection,
     print_registered_beans,
 )
-from core.addons.addonize.asynctasks_setup import (
-    setup_async_tasks,
-    print_registered_tasks,
-)
 
 # 推荐用法：模块顶部获取一次logger，后续直接使用（高性能）
 logger = get_logger(__name__)
@@ -56,6 +52,8 @@ if __name__ == "__main__":
     print_registered_beans()
 
     # 打印已注册的任务
+    from core.addons.addonize.asynctasks_setup import print_registered_tasks
+
     print_registered_tasks()
 
     logger.info("\n✨ 应用启动完成！")

@@ -57,6 +57,8 @@ def setup_dependency_injection(addons: list = None):
                 logger.debug("    + %s (addon_tag=%s)", path, addon.name)
                 total_paths += 1
 
+    logger.info(scanner.context_registry.print_tree())
+
     # 执行扫描和注册
     scanner.scan()
     logger.info("✅ 依赖注入设置完成，共扫描 %d 个路径", total_paths)

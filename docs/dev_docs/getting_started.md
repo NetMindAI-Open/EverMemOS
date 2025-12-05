@@ -101,23 +101,23 @@ EPISODE_MEMORY_LLM_MAX_TOKENS=16384
 #### DeepInfra Configuration (for Embedding and Rerank)
 ```bash
 # DeepInfra Embedding
-DEEPINFRA_API_KEY=your-deepinfra-key
-DEEPINFRA_BASE_URL=https://api.deepinfra.com/v1/openai
-DEEPINFRA_EMBEDDING_MODEL=Qwen/Qwen3-Embedding-4B
-DEEPINFRA_TIMEOUT=30
-DEEPINFRA_MAX_RETRIES=3
-DEEPINFRA_BATCH_SIZE=10
-DEEPINFRA_MAX_CONCURRENT=5
-DEEPINFRA_ENCODING_FORMAT=float
+VECTORIZE_API_KEY=your-deepinfra-key
+VECTORIZE_BASE_URL=https://api.deepinfra.com/v1/openai
+VECTORIZE_EMBEDDING_MODEL=Qwen/Qwen3-Embedding-4B
+VECTORIZE_TIMEOUT=30
+VECTORIZE_MAX_RETRIES=3
+VECTORIZE_BATCH_SIZE=10
+VECTORIZE_MAX_CONCURRENT=5
+VECTORIZE_ENCODING_FORMAT=float
 VECTORIZE_DIMENSIONS=1024
 
 # DeepInfra Rerank
-DEEPINFRA_RERANK_BASE_URL=https://api.deepinfra.com/v1/inference
-DEEPINFRA_RERANK_MODEL=Qwen/Qwen3-Reranker-4B
-DEEPINFRA_RERANK_TIMEOUT=30
-DEEPINFRA_RERANK_MAX_RETRIES=3
-DEEPINFRA_RERANK_BATCH_SIZE=10
-DEEPINFRA_RERANK_MAX_CONCURRENT=5
+RERANK_BASE_URL=https://api.deepinfra.com/v1/inference
+RERANK_MODEL=Qwen/Qwen3-Reranker-4B
+RERANK_TIMEOUT=30
+RERANK_MAX_RETRIES=3
+RERANK_BATCH_SIZE=10
+RERANK_MAX_CONCURRENT=5
 ```
 
 #### Database Configuration
@@ -166,7 +166,7 @@ PYTHONASYNCIODEBUG=1
 #### DeepInfra API Key
 1. Visit [DeepInfra](https://deepinfra.com/)
 2. Register an account and create an API key
-3. Fill the key into `DEEPINFRA_API_KEY` in the `.env` file
+3. Fill the key into `VECTORIZE_API_KEY` in the `.env` file
 
 ## 🚀 Start Services
 

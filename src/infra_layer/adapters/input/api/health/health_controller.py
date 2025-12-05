@@ -23,10 +23,10 @@ class HealthController(BaseController):
 
     def __init__(self):
         super().__init__(
-            prefix="/api", tags=["Health"], default_auth="none"  # 健康检查不需要认证
+            prefix="/health", tags=["Health"], default_auth="none"  # 健康检查不需要认证
         )
 
-    @get("/health", summary="健康检查", description="检查系统健康状态")
+    @get("", summary="健康检查", description="检查系统健康状态")
     def health_check(self) -> Dict[str, Any]:
         """
         健康检查接口

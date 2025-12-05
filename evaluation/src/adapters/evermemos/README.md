@@ -42,7 +42,7 @@ Ensure the `.env` file in the project root directory is configured:
 ```bash
 # Required environment variables
 LLM_API_KEY=your_llm_api_key           # LLM API key
-DEEPINFRA_API_KEY=your_deepinfra_key   # Embedding/Reranker API key
+VECTORIZE_API_KEY=your_VECTORIZE_key   # Embedding/Reranker API key
 ```
 
 ### 2. Modify Configuration

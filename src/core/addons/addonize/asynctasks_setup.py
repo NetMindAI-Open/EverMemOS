@@ -6,7 +6,6 @@
 """
 
 from core.asynctasks.task_scan_registry import TaskScanDirectoriesRegistry
-from core.asynctasks.task_manager import TaskManager
 from core.di.utils import get_bean_by_type
 from core.observation.logger import get_logger
 from core.addons.addons_registry import ADDONS_REGISTRY
@@ -27,6 +26,8 @@ def setup_async_tasks(addons: list = None):
 
     try:
         # 获取任务管理器
+        from core.asynctasks.task_manager import TaskManager
+
         task_manager = get_bean_by_type(TaskManager)
 
         # 如果没有提供 addons，从 ADDONS_REGISTRY 获取
@@ -68,6 +69,8 @@ def print_registered_tasks():
     """打印已注册的异步任务"""
     logger.info("\n📋 已注册的任务列表:")
     logger.info("-" * 50)
+
+    from core.asynctasks.task_manager import TaskManager
 
     task_manager = get_bean_by_type(TaskManager)
 

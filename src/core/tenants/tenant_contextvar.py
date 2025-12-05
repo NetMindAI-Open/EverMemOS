@@ -33,7 +33,7 @@ def set_current_tenant(tenant_info: Optional[TenantInfo]) -> None:
         tenant_info: 租户信息对象，如果为 None 则清除当前租户信息
 
     Examples:
-        >>> from src.core.tenants.tenant_models import TenantInfo, TenantDetail
+        >>> from core.tenants.tenant_models import TenantInfo, TenantDetail
         >>> tenant = TenantInfo(
         ...     tenant_id="tenant_001",
         ...     tenant_detail=TenantDetail(),

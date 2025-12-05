@@ -12,7 +12,7 @@ import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from core.observation.logger import get_logger
-from core.di.scan_context import ScanContextRegistry, scan_context
+from core.di.scan_context import ScanContextRegistry, get_scan_context_registry
 
 
 class ComponentScanner:
@@ -39,8 +39,8 @@ class ComponentScanner:
         # 创建专门的日志记录器
         self.logger = get_logger(__name__)
 
-        # 扫描上下文注册器
-        self.context_registry = ScanContextRegistry()
+        # 扫描上下文注册器（使用单例）
+        self.context_registry = get_scan_context_registry()
 
         # 需要预加载的关键模块，避免并行导入时的循环依赖
         self.preload_modules = [
@@ -319,15 +319,7 @@ class ComponentScanner:
             return
 
         try:
-            # 获取该文件路径对应的上下文元数据
-            metadata = self.context_registry.get_metadata_for_path(file_path)
-
-            # 在扫描上下文中导入模块
-            # 被导入的模块可以通过 get_current_scan_context() 获取上下文信息
-            with scan_context(file_path, module_name, metadata):
-                # 导入模块以触发装饰器
-                importlib.import_module(module_name)
-
+            importlib.import_module(module_name)
         except ImportError as e:
             self.logger.error("导入模块失败 %s: %s", module_name, e)
             traceback.print_exc()

@@ -270,7 +270,7 @@ uv sync
 cp env.template .env
 # 编辑 .env 文件，填入必要的配置
 #   - LLM_API_KEY: 填入您的 LLM API Key（用于记忆提取）
-#   - DEEPINFRA_API_KEY: 填入您的 DeepInfra API Key（用于 Embedding 和 Rerank）
+#   - VECTORIZE_API_KEY: 填入您的 DeepInfra API Key（用于 Embedding 和 Rerank）
 # 详细配置说明请参考：[配置指南](docs/usage/CONFIGURATION_GUIDE_zh.md)
 ```
 

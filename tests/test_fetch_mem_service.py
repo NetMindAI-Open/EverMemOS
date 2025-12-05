@@ -86,9 +86,7 @@ class TestFakeFetchMemoryService:
         )
 
         assert response.total_count > 0
-        assert all(
-            isinstance(memory, ForesightModel) for memory in response.memories
-        )
+        assert all(isinstance(memory, ForesightModel) for memory in response.memories)
         assert all(memory.user_id == "user_001" for memory in response.memories)
 
     @pytest.mark.asyncio
@@ -136,7 +134,7 @@ class TestFakeFetchMemoryService:
         assert all(memory.user_id == "user_001" for memory in response.memories)
 
     @pytest.mark.asyncio
-    async def test_find_by_user_id_personal_foresight(self, service):
+    async def test_find_by_user_id_foresight_2(self, service):
         """测试查找个人前瞻"""
         response = await service.find_by_user_id(
             "user_001", MemoryType.FORESIGHT, limit=5
@@ -144,8 +142,7 @@ class TestFakeFetchMemoryService:
 
         assert response.total_count > 0
         assert all(
-            isinstance(memory, ForesightRecordModel)
-            for memory in response.memories
+            isinstance(memory, ForesightRecordModel) for memory in response.memories
         )
         # 个人前瞻的 user_id 可能为 None（群组场景），所以不强制检查
 

@@ -33,89 +33,85 @@ if MEMORY_LANGUAGE == 'zh':
     # ===== 中文提示词 =====
     # 对话相关
     from .zh.conv_prompts import CONV_BOUNDARY_DETECTION_PROMPT, CONV_SUMMARY_PROMPT
-    
+
     # Episode 相关
     from .zh.episode_mem_prompts import (
         EPISODE_GENERATION_PROMPT,
         GROUP_EPISODE_GENERATION_PROMPT,
         DEFAULT_CUSTOM_INSTRUCTIONS,
     )
-    
+
     # Profile 相关
     from .zh.profile_mem_prompts import CONVERSATION_PROFILE_EXTRACTION_PROMPT
-    from .zh.profile_mem_part1_prompts import CONVERSATION_PROFILE_PART1_EXTRACTION_PROMPT
-    from .zh.profile_mem_part2_prompts import CONVERSATION_PROFILE_PART2_EXTRACTION_PROMPT
-    from .zh.profile_mem_part3_prompts import CONVERSATION_PROFILE_PART3_EXTRACTION_PROMPT
+    from .zh.profile_mem_part1_prompts import (
+        CONVERSATION_PROFILE_PART1_EXTRACTION_PROMPT,
+    )
+    from .zh.profile_mem_part2_prompts import (
+        CONVERSATION_PROFILE_PART2_EXTRACTION_PROMPT,
+    )
+    from .zh.profile_mem_part3_prompts import (
+        CONVERSATION_PROFILE_PART3_EXTRACTION_PROMPT,
+    )
     from .zh.profile_mem_evidence_completion_prompt import (
         CONVERSATION_PROFILE_EVIDENCE_COMPLETION_PROMPT,
     )
-    
+
     # Group Profile 相关
     from .zh.group_profile_prompts import (
         CONTENT_ANALYSIS_PROMPT,
         BEHAVIOR_ANALYSIS_PROMPT,
     )
-    
+
     # Foresight 相关
     from .zh.foresight_prompts import (
         get_group_foresight_generation_prompt,
         get_foresight_generation_prompt,
     )
-    
+
     # Event Log 相关
     from .zh.event_log_prompts import EVENT_LOG_PROMPT
-    
+
 else:
     # ===== 英文提示词（默认） =====
     # 对话相关
     from .en.conv_prompts import CONV_BOUNDARY_DETECTION_PROMPT, CONV_SUMMARY_PROMPT
-    
+
     # Episode 相关
     from .en.episode_mem_prompts import (
         EPISODE_GENERATION_PROMPT,
         GROUP_EPISODE_GENERATION_PROMPT,
         DEFAULT_CUSTOM_INSTRUCTIONS,
     )
-    
+
     # Profile 相关
     from .en.profile_mem_prompts import CONVERSATION_PROFILE_EXTRACTION_PROMPT
-    from .en.profile_mem_part1_prompts import CONVERSATION_PROFILE_PART1_EXTRACTION_PROMPT
-    from .en.profile_mem_part2_prompts import CONVERSATION_PROFILE_PART2_EXTRACTION_PROMPT
-    from .en.profile_mem_part3_prompts import CONVERSATION_PROFILE_PART3_EXTRACTION_PROMPT
+    from .en.profile_mem_part1_prompts import (
+        CONVERSATION_PROFILE_PART1_EXTRACTION_PROMPT,
+    )
+    from .en.profile_mem_part2_prompts import (
+        CONVERSATION_PROFILE_PART2_EXTRACTION_PROMPT,
+    )
+    from .en.profile_mem_part3_prompts import (
+        CONVERSATION_PROFILE_PART3_EXTRACTION_PROMPT,
+    )
     from .en.profile_mem_evidence_completion_prompt import (
         CONVERSATION_PROFILE_EVIDENCE_COMPLETION_PROMPT,
     )
-    
+
     # Group Profile 相关
     from .en.group_profile_prompts import (
         CONTENT_ANALYSIS_PROMPT,
         BEHAVIOR_ANALYSIS_PROMPT,
     )
-    
+
     # Foresight 相关
     from .en.foresight_prompts import (
         get_group_foresight_generation_prompt,
         get_foresight_generation_prompt,
     )
-    
+
     # Event Log 相关
     from .en.event_log_prompts import EVENT_LOG_PROMPT
 
 # 导出当前语言信息
 CURRENT_LANGUAGE = MEMORY_LANGUAGE
-
-
-def get_current_language():
-    """获取当前语言"""
-    return CURRENT_LANGUAGE
-
-
-def set_language(language: str):
-    """设置语言（需要重启应用才能生效）"""
-    global MEMORY_LANGUAGE, CURRENT_LANGUAGE
-    if language.lower() in SUPPORTED_LANGUAGES:
-        MEMORY_LANGUAGE = language.lower()
-        CURRENT_LANGUAGE = MEMORY_LANGUAGE
-        print(f"Language set to: {MEMORY_LANGUAGE}")
-    else:
-        print(f"Unsupported language: {language}. Supported: {SUPPORTED_LANGUAGES}")

@@ -45,36 +45,46 @@ def get_ca_file_path(ca_file_path: str) -> Optional[str]:
         return None
 
 
-def get_default_kafka_config() -> Dict[str, Any]:
+def get_default_kafka_config(env_prefix: str = "") -> Dict[str, Any]:
     """
-    基于环境变量获取默认的 Kafka Consumer 配置
+    基于环境变量获取默认的 Kafka 配置
 
-    环境变量：
-    - KAFKA_SERVERS: Kafka 服务器列表，逗号分隔
-    - KAFKA_TOPIC: Kafka 主题
-    - KAFKA_GROUP_ID: Consumer 组 ID
-    - MAX_POLL_INTERVAL_MS: 最大轮询间隔（毫秒）
-    - SESSION_TIMEOUT_MS: 会话超时时间（毫秒）
-    - HEARTBEAT_INTERVAL_MS: 心跳间隔（毫秒）
-    - CA_FILE_PATH: CA证书文件路径
+    Args:
+        env_prefix: 环境变量前缀，用于区分不同配置（如 "PRODUCER_" 或 ""）
+                   前缀会拼接在 KAFKA_ 前面，例如 "PRODUCER_" + "KAFKA_SERVERS" = "PRODUCER_KAFKA_SERVERS"
+
+    环境变量（以 prefix=PRODUCER_ 为例）：
+    - {prefix}KAFKA_SERVERS: Kafka 服务器列表，逗号分隔
+    - {prefix}KAFKA_TOPIC: Kafka 主题
+    - {prefix}KAFKA_GROUP_ID: Consumer 组 ID
+    - {prefix}MAX_POLL_INTERVAL_MS: 最大轮询间隔（毫秒）
+    - {prefix}SESSION_TIMEOUT_MS: 会话超时时间（毫秒）
+    - {prefix}HEARTBEAT_INTERVAL_MS: 心跳间隔（毫秒）
+    - {prefix}CA_FILE_PATH: CA证书文件路径
 
     Returns:
         Dict[str, Any]: 配置字典
     """
+
+    def get_env(key: str, default: str = "") -> str:
+        """获取带前缀的环境变量"""
+        return os.getenv(f"{env_prefix}{key}", default)
+
     # 获取环境变量，提供默认值
-    kafka_servers_str = os.getenv("KAFKA_SERVERS", "")
+    kafka_servers_str = get_env("KAFKA_SERVERS", "")
     kafka_servers = [server.strip() for server in kafka_servers_str.split(",")]
 
-    kafka_topic = os.getenv("KAFKA_TOPIC", "")
-    kafka_group_id = os.getenv("KAFKA_GROUP_ID", "aic_test_0908")
-    max_poll_interval_ms = int(os.getenv("MAX_POLL_INTERVAL_MS", "3600000"))
-    session_timeout_ms = int(os.getenv("SESSION_TIMEOUT_MS", "10000"))
-    heartbeat_interval_ms = int(os.getenv("HEARTBEAT_INTERVAL_MS", "3000"))
+    kafka_topic = get_env("KAFKA_TOPIC", "")
+    kafka_group_id = get_env("KAFKA_GROUP_ID", "aic_test_0908")
+    max_poll_interval_ms = int(get_env("MAX_POLL_INTERVAL_MS", "3600000"))
+    session_timeout_ms = int(get_env("SESSION_TIMEOUT_MS", "10000"))
+    heartbeat_interval_ms = int(get_env("HEARTBEAT_INTERVAL_MS", "3000"))
 
     # 处理CA证书路径
     ca_file_path = None
-    if os.getenv("CA_FILE_PATH"):
-        ca_file_path = get_ca_file_path(os.getenv("CA_FILE_PATH", ""))
+    ca_file_env = get_env("CA_FILE_PATH")
+    if ca_file_env:
+        ca_file_path = get_ca_file_path(ca_file_env)
 
     config = {
         "kafka_servers": kafka_servers,
@@ -88,7 +98,8 @@ def get_default_kafka_config() -> Dict[str, Any]:
         "enable_auto_commit": True,
     }
 
-    logger.info("获取默认 Kafka Consumer 配置:")
+    prefix_info = f" (prefix: {env_prefix})" if env_prefix else ""
+    logger.info("获取默认 Kafka 配置%s:", prefix_info)
     logger.info("  服务器: %s", kafka_servers)
     logger.info("  主题: %s", kafka_topic)
     logger.info("  组ID: %s", kafka_group_id)
@@ -136,20 +147,20 @@ def get_consumer_name(kafka_topic: str, kafka_group_id: str) -> str:
     return f"{topic_str}.{kafka_group_id}"
 
 
-def json_bson_decode(value: bytes | None) -> Any:
+def bson_json_decode(value: bytes | None) -> Any:
     """
-    JSON/BSON 解码器
-    优先尝试 JSON 解码，失败时尝试 BSON 解码
+    BSON/JSON 解码器
+    优先尝试 BSON 解码，失败时尝试 JSON 解码
     """
     if not value or value == b"null":
         return value
     try:
-        return json.loads(value.decode("utf-8"))
+        return bson.decode(value)
     except Exception:
         try:
-            return bson.decode(value)
+            return json.loads(value.decode("utf-8"))
         except Exception as e:
-            logger.error("bson解析错误: %s", e)
+            logger.error("json解析错误: %s", e)
             return value
 
 
@@ -167,7 +178,6 @@ class KafkaConsumerFactory:
         """初始化 Kafka Consumer 工厂"""
         self._consumers: Dict[str, AIOKafkaConsumer] = {}
         self._lock = asyncio.Lock()
-        self._default_config: Optional[Dict[str, Any]] = None
         logger.info("KafkaConsumerFactory initialized")
 
     async def create_consumer(
@@ -209,7 +219,6 @@ class KafkaConsumerFactory:
 
         # 处理可能的多个topic（逗号分隔）
         topics = [topic.strip() for topic in kafka_topic.split(",")]
-        consumer_name = get_consumer_name(kafka_topic, kafka_group_id)
 
         # 创建 AIOKafkaConsumer
         consumer = AIOKafkaConsumer(
@@ -219,7 +228,7 @@ class KafkaConsumerFactory:
             auto_offset_reset=auto_offset_reset,
             enable_auto_commit=enable_auto_commit,
             key_deserializer=lambda k: k.decode("utf-8") if k else None,
-            value_deserializer=json_bson_decode,
+            value_deserializer=bson_json_decode,
             security_protocol="SSL" if ca_file_path else "PLAINTEXT",
             ssl_context=ssl_context,
             max_poll_interval_ms=max_poll_interval_ms,
@@ -227,6 +236,7 @@ class KafkaConsumerFactory:
             heartbeat_interval_ms=heartbeat_interval_ms,
         )
 
+        consumer_name = get_consumer_name(kafka_topic, kafka_group_id)
         logger.info("Created AIOKafkaConsumer for %s", consumer_name)
         return consumer
 
@@ -291,21 +301,24 @@ class KafkaConsumerFactory:
 
         return consumer
 
-    async def get_default_consumer(self, force_new: bool = False) -> AIOKafkaConsumer:
+    async def get_default_consumer(
+        self, force_new: bool = False, env_prefix: str = ""
+    ) -> AIOKafkaConsumer:
         """
         获取基于环境变量配置的默认 AIOKafkaConsumer 实例
 
         Args:
             force_new: 是否强制创建新实例，默认 False
+            env_prefix: 环境变量前缀，默认为 ""（兼容旧配置）
+                       例如 env_prefix="CUSTOM_" 会读取 CUSTOM_KAFKA_SERVERS 等
 
         Returns:
             AIOKafkaConsumer 实例
         """
-        # 获取或创建默认配置
-        if self._default_config is None:
-            self._default_config = get_default_kafka_config()
+        # 每次都基于当前 env_prefix 获取配置，不使用缓存
+        # 因为不同前缀可能对应不同的配置
+        config = get_default_kafka_config(env_prefix=env_prefix)
 
-        config = self._default_config
         return await self.get_consumer(
             kafka_servers=config["kafka_servers"],
             kafka_topic=config["kafka_topic"],

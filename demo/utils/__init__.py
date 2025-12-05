@@ -4,7 +4,6 @@
 """
 
 from demo.utils.memory_utils import (
-    set_prompt_language,
     get_prompt_language,
     ensure_mongo_beanie_ready,
     query_all_groups_from_mongodb,
@@ -14,7 +13,6 @@ from demo.utils.memory_utils import (
 from demo.utils.simple_memory_manager import SimpleMemoryManager
 
 __all__ = [
-    "set_prompt_language",
     "get_prompt_language",
     "ensure_mongo_beanie_ready",
     "query_all_groups_from_mongodb",
@@ -22,4 +20,3 @@ __all__ = [
     "serialize_datetime",
     "SimpleMemoryManager",
 ]
-

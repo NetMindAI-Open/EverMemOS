@@ -39,7 +39,19 @@ SHANGHAI_TZ = ZoneInfo("Asia/Shanghai")
 class MemoryControllerTester:
     """Memory Controller API 测试类"""
 
-    def __init__(self, base_url: str, user_id: str, group_id: str, timeout: int = 180):
+    # 默认租户信息
+    DEFAULT_ORGANIZATION_ID = "test_memory_api_organization"
+    DEFAULT_SPACE_ID = "test_memory_api_space"
+
+    def __init__(
+        self,
+        base_url: str,
+        user_id: str,
+        group_id: str,
+        organization_id: str = None,
+        space_id: str = None,
+        timeout: int = 180,
+    ):
         """
         初始化测试器
 
@@ -47,13 +59,69 @@ class MemoryControllerTester:
             base_url: API基础URL
             user_id: 测试用户ID
             group_id: 测试群组ID
+            organization_id: 组织ID（默认: test_memory_api_organization）
+            space_id: 空间ID（默认: test_memory_api_space）
             timeout: 请求超时时间(秒)，默认180秒(3分钟)
         """
         self.base_url = base_url
         self.api_prefix = "/api/v1/memories"
         self.user_id = user_id
         self.group_id = group_id
+        self.organization_id = organization_id or self.DEFAULT_ORGANIZATION_ID
+        self.space_id = space_id or self.DEFAULT_SPACE_ID
         self.timeout = timeout
+
+    def get_tenant_headers(self) -> dict:
+        """
+        获取租户相关的请求头
+
+        Returns:
+            dict: 包含 X-Organization-Id 和 X-Space-Id 的字典
+        """
+        return {"X-Organization-Id": self.organization_id, "X-Space-Id": self.space_id}
+
+    def init_database(self) -> bool:
+        """
+        初始化租户数据库
+
+        调用 /internal/tenant/init-db 接口初始化数据库。
+
+        Returns:
+            bool: 初始化是否成功
+        """
+        url = f"{self.base_url}/internal/tenant/init-db"
+        headers = self.get_tenant_headers()
+
+        print("\n" + "=" * 80)
+        print("  初始化租户数据库")
+        print("=" * 80)
+        print(f"📍 URL: POST {url}")
+        print(
+            f"📤 租户信息: organization_id={self.organization_id}, space_id={self.space_id}"
+        )
+        print(f"📤 请求头: {json.dumps(headers, indent=2, ensure_ascii=False)}")
+
+        try:
+            response = requests.post(url, headers=headers, timeout=self.timeout)
+            print(f"\n📥 响应状态码: {response.status_code}")
+            response_json = response.json()
+            print("📥 响应数据:")
+            print(json.dumps(response_json, indent=2, ensure_ascii=False))
+
+            if response.status_code == 200 and response_json.get("success"):
+                print(
+                    f"\n✅ 数据库初始化成功: tenant_id={response_json.get('tenant_id')}"
+                )
+                return True
+            else:
+                print(
+                    f"\n⚠️  数据库初始化返回: {response_json.get('message', 'Unknown')}"
+                )
+                # 即使失败也继续，可能是数据库已存在
+                return True
+        except Exception as e:  # noqa: BLE001
+            print(f"\n❌ 数据库初始化失败: {e}")
+            return False
 
     def print_section(self, title: str):
         """打印分隔线"""
@@ -78,12 +146,15 @@ class MemoryControllerTester:
             print(f"⚠️  未提供 sender，自动生成: {data['sender']}")
 
         url = f"{self.base_url}{self.api_prefix}{endpoint}"
+        headers = self.get_tenant_headers()
         print(f"\n📍 URL: POST {url}")
         print("📤 请求数据:")
         print(json.dumps(data, indent=2, ensure_ascii=False))
 
         try:
-            response = requests.post(url, json=data, timeout=self.timeout)
+            response = requests.post(
+                url, json=data, headers=headers, timeout=self.timeout
+            )
             print(f"\n📥 响应状态码: {response.status_code}")
             print("📥 响应数据:")
             response_json = response.json()
@@ -105,13 +176,16 @@ class MemoryControllerTester:
             (status_code, response_json)
         """
         url = f"{self.base_url}{self.api_prefix}{endpoint}"
+        headers = self.get_tenant_headers()
         print(f"\n📍 URL: GET {url}")
         if params:
             print("📤 查询参数:")
             print(json.dumps(params, indent=2, ensure_ascii=False))
 
         try:
-            response = requests.get(url, params=params, timeout=self.timeout)
+            response = requests.get(
+                url, params=params, headers=headers, timeout=self.timeout
+            )
             print(f"\n📥 响应状态码: {response.status_code}")
             print("📥 响应数据:")
             response_json = response.json()
@@ -135,13 +209,16 @@ class MemoryControllerTester:
             (status_code, response_json)
         """
         url = f"{self.base_url}{self.api_prefix}{endpoint}"
+        headers = self.get_tenant_headers()
         print(f"\n📍 URL: GET {url} (with body)")
         print("📤 请求数据:")
         print(json.dumps(data, indent=2, ensure_ascii=False))
 
         try:
             # GET 请求带 body（requests 库支持，但不常用）
-            response = requests.request("GET", url, json=data, timeout=self.timeout)
+            response = requests.request(
+                "GET", url, json=data, headers=headers, timeout=self.timeout
+            )
             print(f"\n📥 响应状态码: {response.status_code}")
             print("📥 响应数据:")
             response_json = response.json()
@@ -163,12 +240,15 @@ class MemoryControllerTester:
             (status_code, response_json)
         """
         url = f"{self.base_url}{self.api_prefix}{endpoint}"
+        headers = self.get_tenant_headers()
         print(f"\n📍 URL: PATCH {url}")
         print("📤 请求数据:")
         print(json.dumps(data, indent=2, ensure_ascii=False))
 
         try:
-            response = requests.patch(url, json=data, timeout=self.timeout)
+            response = requests.patch(
+                url, json=data, headers=headers, timeout=self.timeout
+            )
             print(f"\n📥 响应状态码: {response.status_code}")
             print("📥 响应数据:")
             response_json = response.json()
@@ -387,13 +467,13 @@ class MemoryControllerTester:
 
         return status_code, response
 
-    def test_fetch_personal_foresight(self):
-        """测试3: GET /api/v1/memories - 获取个人前瞻（personal_foresight类型）"""
+    def test_fetch_foresight(self):
+        """测试3: GET /api/v1/memories - 获取个人前瞻（foresight类型）"""
         self.print_section("测试3: GET /api/v1/memories - 获取个人前瞻")
 
         params = {
             "user_id": self.user_id,
-            "memory_type": "personal_foresight",
+            "memory_type": "foresight",
             "limit": 10,
             "offset": 0,
         }
@@ -447,12 +527,12 @@ class MemoryControllerTester:
         return status_code, response
 
     def test_fetch_event_log(self):
-        """测试4: GET /api/v1/memories - 获取用户事件日志（personal_event_log类型）"""
+        """测试4: GET /api/v1/memories - 获取用户事件日志（event_log类型）"""
         self.print_section("测试4: GET /api/v1/memories - 获取用户事件日志")
 
         params = {
             "user_id": self.user_id,
-            "memory_type": "personal_event_log",
+            "memory_type": "event_log",
             "limit": 10,
             "offset": 0,
         }
@@ -797,16 +877,23 @@ class MemoryControllerTester:
         print(f"  API地址: {self.base_url}")
         print(f"  测试用户: {self.user_id}")
         print(f"  测试群组: {self.group_id}")
+        print(f"  组织ID: {self.organization_id}")
+        print(f"  空间ID: {self.space_id}")
         print(f"  测试方法: {test_method}")
         if except_test_methods:
             print(f"  排除方法: {except_test_methods}")
         print("=" * 80)
 
+        # 首先初始化数据库
+        if not self.init_database():
+            print("\n❌ 数据库初始化失败，终止测试")
+            return
+
         # 定义测试方法映射
         test_methods = {
             "memorize": self.test_memorize_single_message,
             "fetch_episodic": self.test_fetch_episodic,
-            "fetch_foresight": self.test_fetch_personal_foresight,
+            "fetch_foresight": self.test_fetch_foresight,
             "fetch_event_log": self.test_fetch_event_log,
             "search_keyword": self.test_search_memories_keyword,
             "search_vector": self.test_search_memories_vector,
@@ -887,6 +974,9 @@ def parse_args():
   # 指定API地址和测试用户
   python tests/test_memory_controller.py --base-url http://dev-server:1995 --user-id test_user_123
 
+  # 指定租户信息
+  python tests/test_memory_controller.py --organization-id my_org --space-id my_space
+
   # 单独测试某个方法
   python tests/test_memory_controller.py --test-method memorize
   python tests/test_memory_controller.py --test-method fetch_episodic
@@ -899,7 +989,7 @@ def parse_args():
   python tests/test_memory_controller.py --except-test-method save_meta,patch_meta
 
   # 指定所有参数
-  python tests/test_memory_controller.py --base-url http://dev-server:1995 --user-id test_user --group-id test_group --timeout 60
+  python tests/test_memory_controller.py --base-url http://dev-server:1995 --user-id test_user --group-id test_group --organization-id my_org --space-id my_space --timeout 60
         """,
     )
 
@@ -912,6 +1002,18 @@ def parse_args():
     parser.add_argument("--user-id", default=None, help="测试用户ID (默认: 随机生成)")
 
     parser.add_argument("--group-id", default=None, help="测试群组ID (默认: 随机生成)")
+
+    parser.add_argument(
+        "--organization-id",
+        default=None,
+        help=f"组织ID (默认: {MemoryControllerTester.DEFAULT_ORGANIZATION_ID})",
+    )
+
+    parser.add_argument(
+        "--space-id",
+        default=None,
+        help=f"空间ID (默认: {MemoryControllerTester.DEFAULT_SPACE_ID})",
+    )
 
     parser.add_argument(
         "--timeout", type=int, default=180, help="请求超时时间(秒) (默认: 180)"
@@ -963,15 +1065,32 @@ def main():
     # 如果未提供 group_id，随机生成一个
     group_id = args.group_id if args.group_id else f"group_{uuid.uuid4().hex[:12]}"
 
+    # 组织ID和空间ID使用默认值（如果未提供）
+    organization_id = args.organization_id
+    space_id = args.space_id
+
     # 输出使用的ID信息
     if not args.user_id:
         print(f"⚠️  未提供 --user-id，自动生成: {user_id}")
     if not args.group_id:
         print(f"⚠️  未提供 --group-id，自动生成: {group_id}")
+    if not args.organization_id:
+        print(
+            f"⚠️  未提供 --organization-id，使用默认值: {MemoryControllerTester.DEFAULT_ORGANIZATION_ID}"
+        )
+    if not args.space_id:
+        print(
+            f"⚠️  未提供 --space-id，使用默认值: {MemoryControllerTester.DEFAULT_SPACE_ID}"
+        )
 
     # 创建测试器实例
     tester = MemoryControllerTester(
-        base_url=args.base_url, user_id=user_id, group_id=group_id, timeout=args.timeout
+        base_url=args.base_url,
+        user_id=user_id,
+        group_id=group_id,
+        organization_id=organization_id,
+        space_id=space_id,
+        timeout=args.timeout,
     )
 
     # 运行测试（根据参数决定运行全部还是单个，或者排除某些测试）

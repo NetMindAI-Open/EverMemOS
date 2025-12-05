@@ -3,7 +3,7 @@
 负责提取和设置应用级别的上下文信息，以及处理应用相关的逻辑（如上报等）
 """
 
-from typing import Callable, Optional
+from typing import Callable, Dict, Any, Optional
 from contextvars import Token
 
 from fastapi import Request
@@ -23,64 +23,58 @@ class AppLogicMiddleware(BaseHTTPMiddleware):
     """
     应用逻辑中间件
 
-    负责从 HTTP 请求中提取和设置应用级别的上下文信息：
-    - 与数据库会话中间件分离，职责单一
-    - 支持多种提取策略（请求头、查询参数、URL路径、请求体等）
-    - 可扩展支持应用相关的逻辑处理（如上报等）
+    负责管理请求生命周期，调用 AppLogicProvider 的回调方法：
+    - on_request_begin(): 请求开始时调用
+    - on_request_complete(): 请求结束时调用
     """
 
     def __init__(self, app: ASGIApp):
         super().__init__(app)
-        self.app_logic_provider = get_bean_by_type(AppLogicProvider)
+        self._app_logic_provider = get_bean_by_type(AppLogicProvider)
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        app_context_token = None
+        app_context_token: Optional[Token] = None
+        app_info: Optional[Dict[str, Any]] = None
+        error_message: Optional[str] = None
+        http_code: int = 200
 
         try:
-            # 设置应用级别的上下文信息
-            app_context_token = await self._set_app_context(request)
+            # ========== 请求开始：调用 on_request_begin ==========
+            app_info = await self._app_logic_provider.on_request_begin(request)
+
+            # 设置应用上下文
+            if app_info:
+                app_context_token = set_current_app_info(app_info)
 
             # 处理请求
             response = await call_next(request)
+            http_code = response.status_code
 
             return response
 
         except Exception as e:
-            logger.error(f"应用逻辑中间件处理异常: {e}")
+            logger.error("应用逻辑中间件处理异常: %s", e)
+            error_message = str(e)
+            http_code = 500
             raise
 
         finally:
+            # ========== 请求结束：调用 on_request_complete ==========
+            if app_info:
+                try:
+                    await self._app_logic_provider.on_request_complete(
+                        request=request,
+                        app_info=app_info,
+                        http_code=http_code,
+                        error_message=error_message,
+                    )
+                except Exception as callback_error:
+                    # 回调失败不应影响请求处理
+                    logger.warning("on_request_complete 执行失败: %s", callback_error)
+
             # 清理应用上下文
             if app_context_token:
                 try:
                     clear_current_app_info(app_context_token)
-                    logger.debug("已清理应用上下文")
                 except Exception as cleanup_error:
-                    logger.warning(f"清理应用上下文时发生错误: {cleanup_error}")
-
-    async def _set_app_context(self, request: Request) -> Optional[Token]:
-        """
-        设置应用级别的上下文信息
-
-        Args:
-            request: FastAPI 请求对象
-
-        Returns:
-            Optional[Token]: 应用上下文token
-        """
-        try:
-            # 使用 AppLogicProvider 提取应用级别的上下文信息
-            app_logic_provider = get_bean_by_type(AppLogicProvider)
-            context_data = await app_logic_provider.provide(request)
-
-            # 设置应用上下文
-            if context_data:
-                token = set_current_app_info(context_data)
-                return token
-            else:
-                return None
-
-        except Exception as e:
-            logger.error(f"设置应用上下文时发生异常: {e}")
-            # 即使上下文设置失败，也不应该影响请求的正常处理
-            return None
+                    logger.warning("清理应用上下文时发生错误: %s", cleanup_error)

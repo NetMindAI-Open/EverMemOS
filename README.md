@@ -269,7 +269,7 @@ uv sync
 cp env.template .env
 # Edit the .env file and fill in the necessary configurations:
 #   - LLM_API_KEY: Enter your LLM API Key (for memory extraction)
-#   - DEEPINFRA_API_KEY: Enter your DeepInfra API Key (for Embedding and Rerank)
+#   - VECTORIZE_API_KEY: Enter your DeepInfra API Key (for Embedding and Rerank)
 # For detailed configuration instructions, please refer to: [Configuration Guide](docs/usage/CONFIGURATION_GUIDE.md)
 ```
 

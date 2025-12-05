@@ -42,7 +42,7 @@ locomo_evaluation/
 ```bash
 # 必需的环境变量
 LLM_API_KEY=your_llm_api_key           # LLM 相关环境变量
-DEEPINFRA_API_KEY=your_deepinfra_key   # Embedding/Reranker 相关变量
+VECTORIZE_API_KEY=your_VECTORIZE_key   # Embedding/Reranker 相关变量
 ```
 
 ### 2. 修改配置

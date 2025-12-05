@@ -35,27 +35,6 @@ from demo.config import MongoDBConfig
 # ============================================================================
 
 
-def set_prompt_language(language: str) -> None:
-    """Set Prompt Language for Memory Extraction
-
-    Controls the language used in src/memory_layer/prompts by setting the MEMORY_LANGUAGE environment variable.
-    This affects Prompts used by all memory extractors (MemCell, Profile, Episode, Foresight).
-
-    Args:
-        language: Language code, "zh" or "en"
-
-    Note:
-        - Must be called before importing memory_layer related modules
-        - Recommended to call immediately at program start
-    """
-    if language not in ["zh", "en"]:
-        print(f"[Warning] Unsupported language '{language}', using default 'en'")
-        language = "en"
-
-    os.environ["MEMORY_LANGUAGE"] = language
-    print(f"[Prompt Language] Set to: {language} (Affects all memory extraction Prompts)")
-
-
 def get_prompt_language() -> str:
     """Get Current Prompt Language Setting
 

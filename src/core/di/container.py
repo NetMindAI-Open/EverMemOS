@@ -28,7 +28,7 @@ from threading import RLock
 
 from core.di.bean_definition import BeanDefinition, BeanScope
 from core.di.bean_order_strategy import BeanOrderStrategy
-from core.di.scan_context import get_current_scan_context
+from core.di.scan_context import ScanContextRegistry
 from core.di.exceptions import (
     CircularDependencyError,
     BeanNotFoundError,
@@ -132,11 +132,9 @@ class DIContainer:
         # 合并 metadata：先从 scan_context 获取，再与传入的 metadata 合并
         merged_metadata = {}
 
-        # 1. 检查是否在扫描上下文中，如果是则获取上下文的 metadata
-        scan_context = get_current_scan_context()
-        if scan_context:
-            # 从扫描上下文中获取 metadata
-            context_metadata = scan_context.metadata.copy()
+        # 1. 通过 bean_type 获取其所在文件路径，并搜索对应的上下文 metadata
+        context_metadata = ScanContextRegistry.search_metadata_for_type(bean_type)
+        if context_metadata:
             merged_metadata.update(context_metadata)
 
         # 2. 合并传入的 metadata（传入的优先级更高，可以覆盖扫描上下文的）
