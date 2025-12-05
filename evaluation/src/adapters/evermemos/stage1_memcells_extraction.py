@@ -23,7 +23,6 @@ from common_utils.datetime_utils import (
     from_iso_format,
     from_timestamp,
     get_now_with_timezone,
-    from_datetime_str_strict,
 )
 from memory_layer.llm.llm_provider import LLMProvider
 from memory_layer.memcell_extractor.base_memcell_extractor import RawData, MemCell
@@ -113,7 +112,7 @@ def raw_data_load(locomo_data_path: str) -> Dict[str, List[RawData]]:
                     # Priority 1: Use message-level timestamp if available (e.g., evermembench)
                     if 'time' in msg and msg['time']:
                         # Parse message-level timestamp (strict parsing, raises on error)
-                        msg_datetime = from_datetime_str_strict(msg['time'])
+                        msg_datetime = from_iso_format(msg['time'], strict=True)
                         iso_timestamp = to_iso_format(msg_datetime)
                     else:
                         # Priority 2: Generate timestamp from session time (e.g., locomo)
@@ -426,19 +425,17 @@ async def process_single_conversation(
             group_name=f"LoComo Conversation {conv_id}",
         )
 
-
-
-        # Extract MemCells（传递前瞻提取配置）
-        memcell_list = await memcell_extraction_from_conversation(
-            raw_data_list,
-            llm_provider=llm_provider,
-            memcell_extractor=memcell_extractor,
-            conv_id=conv_id,
-            progress=progress,
-            task_id=task_id,
-            enable_foresight_extraction=config.enable_foresight_extraction if config else False,
-        )
-        # print(f"   ✅ Conv {conv_id}: {len(memcell_list)} memcells extracted")  # Commented to avoid interrupting progress bar
+    # Extract MemCells
+    memcell_list = await memcell_extraction_from_conversation(
+        raw_data_list,
+        llm_provider=llm_provider,
+        memcell_extractor=memcell_extractor,
+        conv_id=conv_id,
+        progress=progress,
+        task_id=task_id,
+        enable_foresight_extraction=config.enable_foresight_extraction if config else False,
+    )
+    # print(f"   ✅ Conv {conv_id}: {len(memcell_list)} memcells extracted")  # Commented to avoid interrupting progress bar
 
     # Convert timestamps to datetime objects before saving
     for memcell in memcell_list:
@@ -565,14 +562,14 @@ async def process_single_conversation(
         
         profile_stats = profile_mgr.get_stats()
 
-        # Save statistics
-        stats_output = {
-            "conv_id": conv_id,
-            "memcells": len(memcell_list),
-            "clustering_enabled": config.enable_clustering if config else False,
-            "profile_enabled": config.enable_profile_extraction if config else False,
-            "foresight_enabled": config.enable_foresight_extraction if config else False,
-        }
+    # Save statistics
+    stats_output = {
+        "conv_id": conv_id,
+        "memcells": len(memcell_list),
+        "clustering_enabled": config.enable_clustering if config else False,
+        "profile_enabled": config.enable_profile_extraction if config else False,
+        "foresight_enabled": config.enable_foresight_extraction if config else False,
+    }
 
     if cluster_stats:
         stats_output["clustering"] = cluster_stats

@@ -11,7 +11,7 @@ from typing import List, Optional
 
 from evaluation.src.core.data_models import Dataset, Conversation, Message, QAPair
 from evaluation.src.converters.registry import get_converter
-from common_utils.datetime_utils import from_datetime_str_strict
+from common_utils.datetime_utils import from_iso_format
 
 
 def load_dataset(dataset_name: str, data_path: str, max_content_length: Optional[int] = None) -> Dataset:
@@ -211,7 +211,7 @@ def _convert_locomo_conversation(conversation_data: dict, conv_id: str, max_cont
             
             if 'time' in msg and msg['time']:
                 # Priority 1: Use message-level timestamp (strict parsing, raises on error)
-                msg_timestamp = from_datetime_str_strict(msg['time'])
+                msg_timestamp = from_iso_format(msg['time'], strict=True)
                 timestamp_source = "message_level"
             else:
                 # Priority 2: Generate from session-level timestamp

@@ -141,113 +141,102 @@ def to_timestamp_ms_universal(time_value) -> int:
         return 0
 
 
-def from_datetime_str_strict(time_str: str) -> datetime.datetime:
+def _parse_datetime_core(time_value, target_timezone: ZoneInfo = None) -> datetime.datetime:
     """
-    Parse datetime string in STRICT mode - raises exception on failure.
+    Core datetime parsing logic. Raises exception on failure.
     
-    Difference from from_iso_format:
-        - from_datetime_str_strict: Strict mode, raises ValueError on failure (for data import)
-        - from_iso_format: Lenient mode, returns current time on failure (for runtime conversion)
-    
-    Supported formats (local time strings without timezone):
-        - "2025-01-07 09:15:33" (space-separated, common in database exports)
-        - "2025-01-07T09:15:33" (ISO T-separated)
-        - "2025-01-07 09:15:33.123456" (with microseconds)
-        - "2025-01-07T09:15:33.123456" (ISO with microseconds)
-    
-    Note: Does NOT support timezone suffixes (e.g., "Z" or "+08:00"). 
-          Use from_iso_format for those formats.
+    Supported inputs:
+        - datetime object (passed through)
+        - ISO format string: "2025-09-15T13:11:15.588000", "2025-09-15T13:11:15.588000Z"
+        - Space-separated string: "2025-01-07 09:15:33" (Python 3.11+)
+        - With timezone offset: "2025-09-15T13:11:15+08:00"
     
     Args:
-        time_str: Datetime string to parse
+        time_value: datetime object or time string
+        target_timezone: Timezone for naive datetime (default: TZ env variable)
     
     Returns:
-        Timezone-aware datetime object (using system TZ environment variable)
+        Timezone-aware datetime object
     
     Raises:
-        ValueError: If time string format is invalid or cannot be parsed
-    
-    Example:
-        >>> from_datetime_str_strict("2025-01-07 09:15:33")
-        datetime.datetime(2025, 1, 7, 9, 15, 33, tzinfo=ZoneInfo('Asia/Shanghai'))
+        ValueError: If parsing fails
     """
-    if not time_str or not isinstance(time_str, str):
-        raise ValueError(f"Invalid time string: {time_str}")
+    # Handle datetime object
+    if isinstance(time_value, datetime.datetime):
+        dt = time_value
+    elif isinstance(time_value, str):
+        time_str = time_value.strip()
+        # Handle "Z" suffix (UTC)
+        if time_str.endswith("Z"):
+            time_str = time_str[:-1] + "+00:00"
+        # Python 3.11+ fromisoformat supports space-separated format
+        dt = datetime.datetime.fromisoformat(time_str)
+    else:
+        # Other types: convert to string first
+        time_str = str(time_value).strip()
+        if time_str.endswith("Z"):
+            time_str = time_str[:-1] + "+00:00"
+        dt = datetime.datetime.fromisoformat(time_str)
     
-    time_str = time_str.strip()
+    # Add timezone if naive
+    if dt.tzinfo is None:
+        tz = target_timezone or get_timezone()
+        dt_localized = dt.replace(tzinfo=tz)
+    else:
+        dt_localized = dt
     
-    # 尝试常见格式（按使用频率排序）
-    formats = [
-        "%Y-%m-%d %H:%M:%S",         # "2025-01-07 09:15:33"
-        "%Y-%m-%dT%H:%M:%S",         # "2025-01-07T09:15:33"
-        "%Y-%m-%d %H:%M:%S.%f",      # "2025-01-07 09:15:33.123456"
-        "%Y-%m-%dT%H:%M:%S.%f",      # "2025-01-07T09:15:33.123456"
-    ]
-    
-    for fmt in formats:
-        try:
-            dt = datetime.datetime.strptime(time_str, fmt)
-            # 添加时区信息
-            return dt.replace(tzinfo=timezone)
-        except ValueError:
-            continue
-    
-    # 所有格式都失败，抛出异常
-    raise ValueError(
-        f"Failed to parse datetime string '{time_str}'. "
-        f"Supported formats: 'YYYY-MM-DD HH:MM:SS' or 'YYYY-MM-DDTHH:MM:SS' (with optional microseconds)"
-    )
+    # Convert to system timezone
+    return dt_localized.astimezone(get_timezone())
 
 
-def from_iso_format(create_time, target_timezone: ZoneInfo = None) -> datetime.datetime:
+def from_iso_format(
+    create_time,
+    target_timezone: ZoneInfo = None,
+    strict: bool = False,
+) -> datetime.datetime:
     """
-    将时间转换为带时区信息的datetime对象
-
+    Parse datetime string or object to timezone-aware datetime.
+    
     Args:
-        create_time: 时间对象或字符串，如 datetime对象 或 "2025-09-15T13:11:15.588000" 或 "2025-09-15T13:11:15.588000Z"
-        target_timezone: 时区对象，如果为None，则使用TZ环境变量
+        create_time: datetime object or time string
+        target_timezone: Timezone for naive datetime (default: TZ env variable)
+        strict: If True, raises ValueError on failure (for data import).
+                If False (default), returns current time on failure (for runtime conversion).
+    
+    Supported formats:
+        - datetime object (passed through)
+        - "2025-01-07 09:15:33" (space-separated)
+        - "2025-01-07T09:15:33" (ISO T-separated)
+        - "2025-01-07 09:15:33.123456" (with microseconds)
+        - "2025-01-07T09:15:33+08:00" (with timezone)
+        - "2025-01-07T09:15:33Z" (UTC)
 
     Returns:
-        带时区信息的datetime对象，默认为东八区时区
+        Timezone-aware datetime object. Returns current time if parsing fails (when strict=False).
+    
+    Raises:
+        ValueError: If strict=True and parsing fails
+    
+    Example:
+        >>> from_iso_format("2025-01-07 09:15:33")
+        datetime.datetime(2025, 1, 7, 9, 15, 33, tzinfo=ZoneInfo('Asia/Shanghai'))
+        
+        >>> from_iso_format("invalid", strict=True)
+        ValueError: ...
     """
-    try:
-        # 处理不同的输入类型
-        if isinstance(create_time, datetime.datetime):
-            # 如果已经是datetime对象，直接使用
-            dt = create_time
-        elif isinstance(create_time, str):
-            # 兼容以 "Z" 结尾的 UTC 时间格式（如 "2025-09-15T13:11:15.588000Z"）
-            # Python 3.11 之前的 fromisoformat 不支持 "Z" 后缀，需要替换为 "+00:00"
-            time_str = (
-                create_time.replace("Z", "+00:00")
-                if create_time.endswith("Z")
-                else create_time
+    if strict:
+        # Strict mode: raise exception on failure
+        if isinstance(create_time, str) and not create_time:
+            raise ValueError(f"Invalid time string: {create_time}")
+        return _parse_datetime_core(create_time, target_timezone)
+    else:
+        # Lenient mode: return current time on failure
+        try:
+            return _parse_datetime_core(create_time, target_timezone)
+        except Exception as e:
+            logger.error(
+                "[DateTimeUtils] from_iso_format - Error converting time: %s", str(e)
             )
-            # 如果是字符串，解析为datetime对象
-            dt = datetime.datetime.fromisoformat(time_str)
-        else:
-            # 其他类型，尝试转换为字符串再解析
-            time_str = str(create_time)
-            time_str = (
-                time_str.replace("Z", "+00:00") if time_str.endswith("Z") else time_str
-            )
-            dt = datetime.datetime.fromisoformat(time_str)
+            return get_now_with_timezone()
 
-        # 如果datetime对象没有时区信息，默认为指定时区
-        if dt.tzinfo is None:
-            # 使用指定的时区，默认为东八区
-            tz = target_timezone or get_timezone()
-            dt_localized = dt.replace(tzinfo=tz)
-        else:
-            # 如果已有时区信息，直接使用
-            dt_localized = dt
 
-        # 统一转换为与get_timezone()一致的时区
-        return dt_localized.astimezone(get_timezone())
-
-    except Exception as e:
-        # 如果转换失败，返回当前时间的东八区时区对象
-        logger.error(
-            "[DateTimeUtils] from_iso_format - Error converting time: %s", str(e)
-        )
-        return get_now_with_timezone()
