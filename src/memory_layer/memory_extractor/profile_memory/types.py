@@ -82,7 +82,6 @@ class ProfileMemory(Memory):
     def __post_init__(self) -> None:
         """Ensure the memory type is set to PROFILE."""
         self.memory_type = MemoryType.PROFILE
-        super().__post_init__()
 
     def to_dict(self) -> Dict[str, Any]:
         """Override to_dict() to include all fields of ProfileMemory"""

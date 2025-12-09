@@ -306,10 +306,10 @@ def _convert_foresight_to_doc(
     foresight: Any, parent_doc: EpisodicMemory, current_time: Optional[datetime] = None
 ) -> ForesightRecord:
     """
-    Convert ForesightItem business object to unified foresight document format.
+    Convert Foresight business object to unified foresight document format.
 
     Args:
-        foresight: Business layer ForesightItem object
+        foresight: Business layer Foresight object
         parent_doc: Parent episodic memory document
         current_time: Current time
 
@@ -325,7 +325,7 @@ def _convert_foresight_to_doc(
         user_name=getattr(
             foresight, "user_name", getattr(parent_doc, "user_name", None)
         ),
-        content=foresight.content,
+        content=foresight.foresight,  # Foresight class uses 'foresight' field, but DB uses 'content'
         parent_episode_id=str(parent_doc.event_id),
         start_time=foresight.start_time,
         end_time=foresight.end_time,

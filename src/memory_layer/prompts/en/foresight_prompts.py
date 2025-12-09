@@ -26,7 +26,7 @@ Return results as a JSON array, each association includes time information and e
     "start_time": "2025-01-15",
     "end_time": "2025-01-22",
     "duration_days": 7,
-    "source_episode_id": "group-2025-001"
+    "parent_episode_id": "group-2025-001"
   }
   ...
 ]
@@ -48,7 +48,7 @@ Return results as a JSON array, each association includes time information and e
     "start_time": "2025-01-15",
     "end_time": "2025-01-31",
     "duration_days": 16,
-    "source_episode_id": "group-2025-001"
+    "parent_episode_id": "group-2025-001"
   },
   {
     "content": "Team will reassign workload internally",
@@ -56,7 +56,7 @@ Return results as a JSON array, each association includes time information and e
     "start_time": "2025-01-15",
     "end_time": "2025-01-22",
     "duration_days": 7,
-    "source_episode_id": "group-2025-001"
+    "parent_episode_id": "group-2025-001"
   },
   ...
 ]
@@ -78,7 +78,7 @@ Return results as a JSON array, each association includes time information and e
     "start_time": "2025-10-23",
     "end_time": "2025-10-30",
     "duration_days": 7,
-    "source_episode_id": "group-2025-002"
+    "parent_episode_id": "group-2025-002"
   },
   {
     "content": "user_1 will reduce outdoor activities in the near term",
@@ -86,7 +86,7 @@ Return results as a JSON array, each association includes time information and e
     "start_time": "2025-10-23",
     "end_time": "2025-10-30",
     "duration_days": 7,
-    "source_episode_id": "group-2025-002"
+    "parent_episode_id": "group-2025-002"
   }
   ...
 ]
@@ -101,7 +101,7 @@ Return results as a JSON array, each association includes time information and e
   - start_time: Extract the specific date when the event occurred from the MemCell's timestamp field, format: YYYY-MM-DD
   - end_time: Extract the specific end time from the original content. If there's an explicit end time (e.g., "before October 24", "2025-11-15"), extract the specific date; otherwise, reasonably infer based on event content and common sense
   - duration_days: Extract duration from the original content. If there's explicit time description (e.g., "within a week", "7 days", "one month"), extract days; otherwise, reasonably infer based on event content and common sense
-  - source_episode_id: Use the event_id from the input
+  - parent_episode_id: Use the event_id from the input
   - evidence: Extract specific evidence from the original content that supports this prediction, must be facts or behaviors explicitly mentioned in the original text, no more than 30 words
   - **Important**: Prioritize extracting explicit time information from the original text; if not available, make reasonable inferences based on event content and common sense. Time cannot be null
 """
@@ -129,7 +129,7 @@ Return results as a JSON array, each association includes time information and e
     "start_time": "2025-10-21",
     "end_time": "2025-10-28",
     "duration_days": 7,
-    "source_episode_id": "test-001"
+    "parent_episode_id": "test-001"
   },
   ...
 ]
@@ -151,7 +151,7 @@ Return results as a JSON array, each association includes time information and e
     "start_time": "2025-10-21",
     "end_time": "2025-10-28",
     "duration_days": 7,
-    "source_episode_id": "test-001"
+    "parent_episode_id": "test-001"
   },
   {
     "content": "XiaoMing will develop a habit of regular dental check-ups",
@@ -159,7 +159,7 @@ Return results as a JSON array, each association includes time information and e
     "start_time": "2025-10-21",
     "end_time": "2025-11-21",
     "duration_days": 31,
-    "source_episode_id": "test-001"
+    "parent_episode_id": "test-001"
   }
   ...
 ]
@@ -181,7 +181,7 @@ Return results as a JSON array, each association includes time information and e
     "start_time": "2025-10-24",
     "end_time": "2025-11-24",
     "duration_days": 31,
-    "source_episode_id": "work-001"
+    "parent_episode_id": "work-001"
   },
   {
     "content": "LiHua will pay attention to more career development opportunities",
@@ -189,7 +189,7 @@ Return results as a JSON array, each association includes time information and e
     "start_time": "2025-10-24",
     "end_time": "2025-12-24",
     "duration_days": 61,
-    "source_episode_id": "work-001"
+    "parent_episode_id": "work-001"
   }
   ...
 ]
@@ -205,7 +205,7 @@ Return results as a JSON array, each association includes time information and e
   - start_time: Extract the specific date when the event occurred from the MemCell's timestamp field, format: YYYY-MM-DD
   - end_time: Extract the specific end time from the original content. If there's an explicit end time (e.g., "before October 24", "2025-11-15"), extract the specific date; otherwise, reasonably infer based on event content and common sense
   - duration_days: Extract duration from the original content. If there's explicit time description (e.g., "within a week", "7 days", "one month"), extract days; otherwise, reasonably infer based on event content and common sense
-  - source_episode_id: Use the event_id from the input
+  - parent_episode_id: Use the event_id from the input
   - evidence: Extract specific evidence from the input content that supports this prediction, must be facts or behaviors explicitly mentioned in the original text, no more than 30 words
   - **Important**: Prioritize extracting explicit time information from the original text; if not available, make reasonable inferences based on event content and common sense. Time cannot be null
 """

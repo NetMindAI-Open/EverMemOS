@@ -11,7 +11,7 @@ from .llm.llm_provider import LLMProvider
 from .memcell_extractor.conv_memcell_extractor import ConvMemCellExtractor
 from .memcell_extractor.base_memcell_extractor import RawData
 from .memcell_extractor.conv_memcell_extractor import ConversationMemCellExtractRequest
-from api_specs.memory_types import MemCell, RawDataType, MemoryType, ForesightItem
+from api_specs.memory_types import MemCell, RawDataType, MemoryType, Foresight
 from .memory_extractor.episode_memory_extractor import (
     EpisodeMemoryExtractor,
     EpisodeMemoryExtractRequest,
@@ -149,7 +149,7 @@ class MemoryManager:
 
         Returns:
             - EPISODIC_MEMORY: Returns Memory (group or personal)
-            - FORESIGHT: Returns List[ForesightItem]
+            - FORESIGHT: Returns List[Foresight]
             - PERSONAL_EVENT_LOG: Returns EventLog
             - PROFILE/GROUP_PROFILE: Returns Memory
         """
@@ -209,7 +209,7 @@ class MemoryManager:
 
     async def _extract_foresight(
         self, episode_memory: Optional[Memory]
-    ) -> List[ForesightItem]:
+    ) -> List[Foresight]:
         """Extract Foresight"""
         if not episode_memory:
             logger.warning(
@@ -238,7 +238,11 @@ class MemoryManager:
 
         extractor = EventLogExtractor(llm_provider=self.llm_provider)
         return await extractor.extract_event_log(
-            episode_text=episode_memory.episode, timestamp=episode_memory.timestamp
+            episode_text=episode_memory.episode,
+            timestamp=episode_memory.timestamp,
+            user_id=episode_memory.user_id,
+            ori_event_id_list=episode_memory.ori_event_id_list,
+            group_id=episode_memory.group_id,
         )
 
     async def _extract_profile(

@@ -5,7 +5,6 @@ This module extracts atomic event logs from episode memories for optimized retri
 Each event log contains a time and a list of atomic facts extracted from the episode.
 """
 
-from dataclasses import dataclass
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 import json
@@ -20,38 +19,11 @@ from ..prompts.eval.event_log_prompts import EVENT_LOG_PROMPT as EVAL_EVENT_LOG_
 from ..llm.llm_provider import LLMProvider
 from common_utils.datetime_utils import get_now_with_timezone
 
+from api_specs.memory_types import EventLog, MemoryType
+
 from core.observation.logger import get_logger
 
 logger = get_logger(__name__)
-
-
-@dataclass
-class EventLog:
-    """
-    Event log data structure containing time and atomic facts.
-    """
-
-    time: str  # Event occurrence time, format like "March 10, 2024(Sunday) at 2:00 PM"
-    atomic_fact: List[str]  # List of atomic facts, each fact is a complete sentence
-    fact_embeddings: List[List[float]] = (
-        None  # Embedding corresponding to each atomic_fact
-    )
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert EventLog to dictionary format."""
-        result = {"time": self.time, "atomic_fact": self.atomic_fact}
-        if self.fact_embeddings:
-            result["fact_embeddings"] = self.fact_embeddings
-        return result
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "EventLog":
-        """Create EventLog from dictionary."""
-        return cls(
-            time=data.get("time", ""),
-            atomic_fact=data.get("atomic_fact", []),
-            fact_embeddings=data.get("fact_embeddings"),
-        )
 
 
 class EventLogExtractor:
@@ -187,7 +159,12 @@ class EventLogExtractor:
         raise ValueError(f"Unable to parse LLM response into valid JSON format")
 
     async def _extract_event_log(
-        self, episode_text: str, timestamp: Any
+        self,
+        episode_text: str,
+        timestamp: Any,
+        user_id: str = "",
+        ori_event_id_list: Optional[List[str]] = None,
+        group_id: Optional[str] = None,
     ) -> Optional[EventLog]:
         """
         Extract event log from episode memory
@@ -195,6 +172,9 @@ class EventLogExtractor:
         Args:
             episode_text: Text content of episode memory
             timestamp: Timestamp of episode (can be in multiple formats)
+            user_id: User ID for the event log
+            ori_event_id_list: Original event ID list
+            group_id: Group ID
 
         Returns:
             EventLog: Extracted event log, return None if extraction fails
@@ -236,19 +216,14 @@ class EventLogExtractor:
         if len(event_log_data["atomic_fact"]) == 0:
             raise ValueError("atomic_fact list is empty")
 
-        # 6. Create EventLog object
-        event_log = EventLog(
-            time=event_log_data["time"], atomic_fact=event_log_data["atomic_fact"]
-        )
-
-        # 7. Batch generate embedding for all atomic_fact (performance optimization)
+        # 6. Batch generate embedding for all atomic_fact (performance optimization)
         from agentic_layer.vectorize_service import get_vectorize_service
 
         vectorize_service = get_vectorize_service()
 
         # Batch compute embeddings (using get_embeddings, accepts List[str])
         fact_embeddings_batch = await vectorize_service.get_embeddings(
-            event_log.atomic_fact
+            event_log_data["atomic_fact"]
         )
 
         # Convert to list format
@@ -257,7 +232,17 @@ class EventLogExtractor:
             for emb in fact_embeddings_batch
         ]
 
-        event_log.fact_embeddings = fact_embeddings
+        # 7. Create EventLog object with Memory base class fields
+        event_log = EventLog(
+            memory_type=MemoryType.EVENT_LOG,
+            user_id=user_id,
+            timestamp=dt,
+            ori_event_id_list=ori_event_id_list or [],
+            group_id=group_id,
+            time=event_log_data["time"],
+            atomic_fact=event_log_data["atomic_fact"],
+            fact_embeddings=fact_embeddings,
+        )
 
         logger.debug(
             f"✅ Successfully extracted event log, containing {len(event_log.atomic_fact)} atomic facts (embeddings generated)"
@@ -265,14 +250,25 @@ class EventLogExtractor:
         return event_log
 
     async def extract_event_log(
-        self, episode_text: str, timestamp: Any
+        self,
+        episode_text: str,
+        timestamp: Any,
+        user_id: str = "",
+        ori_event_id_list: Optional[List[str]] = None,
+        group_id: Optional[str] = None,
     ) -> Optional[EventLog]:
         """
         Extract event log
         """
         for retry in range(5):
             try:
-                return await self._extract_event_log(episode_text, timestamp)
+                return await self._extract_event_log(
+                    episode_text,
+                    timestamp,
+                    user_id=user_id,
+                    ori_event_id_list=ori_event_id_list,
+                    group_id=group_id,
+                )
             except Exception as e:
                 logger.warning(f"Retrying to extract event log {retry+1}/5: {e}")
                 if retry == 4:

@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union
 from dataclasses import dataclass
 from datetime import datetime
 from common_utils.datetime_utils import to_iso_format
@@ -74,7 +74,7 @@ class MemCell:
     episode: Optional[str] = None  # episodic memory content
 
     # Prospective association prediction field
-    foresights: Optional[List['ForesightItem']] = (
+    foresights: Optional[List['Foresight']] = (
         None  # list of prospective associations
     )
     # Event Log field
@@ -128,9 +128,8 @@ class MemCell:
 @dataclass
 class Memory:
     """
-    Simple result class for memory extraction.
-
-    Contains the essential information for extracted memories.
+    Base class for memory extraction results.
+    Contains common fields shared by all memory types.
     """
 
     memory_type: MemoryType
@@ -151,36 +150,29 @@ class Memory:
 
     memcell_event_id_list: Optional[List[str]] = None
     user_name: Optional[str] = None
-    # Prospective association prediction field
-    foresights: Optional[List['ForesightItem']] = (
-        None  # list of prospective associations
-    )
     extend: Optional[Dict[str, Any]] = None
 
     # vector and model
     vector_model: Optional[str] = None
     vector: Optional[List[float]] = None
 
-    def __post_init__(self):
-        pass
+    def _format_timestamp(self) -> Optional[str]:
+        """Format timestamp to ISO string"""
+        if not self.timestamp:
+            return None
+        if isinstance(self.timestamp, str):
+            return self.timestamp if self.timestamp else None
+        try:
+            return to_iso_format(self.timestamp)
+        except Exception:
+            return str(self.timestamp) if self.timestamp else None
 
     def to_dict(self) -> Dict[str, Any]:
-        # Safely handle timestamp (could be datetime, str, or None)
-        timestamp_str = None
-        if self.timestamp:
-            if isinstance(self.timestamp, str):
-                timestamp_str = self.timestamp if self.timestamp else None
-            else:
-                try:
-                    timestamp_str = to_iso_format(self.timestamp)
-                except Exception:
-                    timestamp_str = str(self.timestamp) if self.timestamp else None
-
         return {
             "memory_type": self.memory_type.value if self.memory_type else None,
             "user_id": self.user_id,
             "user_name": self.user_name,
-            "timestamp": timestamp_str,
+            "timestamp": self._format_timestamp(),
             "ori_event_id_list": self.ori_event_id_list,
             "subject": self.subject,
             "summary": self.summary,
@@ -191,82 +183,58 @@ class Memory:
             "type": self.type.value if self.type else None,
             "keywords": self.keywords,
             "linked_entities": self.linked_entities,
-            "foresights": (
-                [item.to_dict() for item in self.foresights]
-                if self.foresights
-                else None
-            ),
             "extend": self.extend,
         }
 
 
 @dataclass
-class Foresight:
-    """
-    Prospective data model
-
-    Used to store prospective knowledge extracted from episodic memories
-    """
-
-    user_id: str
-    content: str
-    knowledge_type: str = "knowledge"
-    source_episodes: List[str] = None
-    created_at: datetime = None
-    group_id: Optional[str] = None
-    participants: Optional[List[str]] = None
-    metadata: Optional[Dict[str, Any]] = None
-
-    def __post_init__(self):
-        from common_utils.datetime_utils import get_now_with_timezone
-
-        if self.source_episodes is None:
-            self.source_episodes = []
-        if self.created_at is None:
-            self.created_at = get_now_with_timezone()
-        if self.metadata is None:
-            self.metadata = {}
+class EventLog(Memory):
+    """Event log - for both extraction and retrieval."""
+    time: Optional[str] = None
+    atomic_fact: Optional[Union[str, List[str]]] = None
+    fact_embeddings: Optional[List[List[float]]] = None
+    parent_episode_id: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
-            "user_id": self.user_id,
-            "content": self.content,
-            "knowledge_type": self.knowledge_type,
-            "source_episodes": self.source_episodes,
-            "created_at": to_iso_format(self.created_at),
-            "group_id": self.group_id,
-            "participants": self.participants,
-            "metadata": self.metadata,
-        }
+        d = super().to_dict()
+        if self.time:
+            d["time"] = self.time
+        if self.atomic_fact:
+            d["atomic_fact"] = self.atomic_fact
+        if self.fact_embeddings:
+            d["fact_embeddings"] = self.fact_embeddings
+        return d
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "EventLog":
+        """Create from dictionary."""
+        return cls(
+            memory_type=MemoryType.from_string(data.get("memory_type")),
+            user_id=data.get("user_id", ""),
+            timestamp=data.get("timestamp"),
+            ori_event_id_list=data.get("ori_event_id_list", []),
+            time=data.get("time", ""),
+            atomic_fact=data.get("atomic_fact", []),
+            fact_embeddings=data.get("fact_embeddings"),
+        )
 
 
 @dataclass
-class ForesightItem:
-    """
-    Prospective association item
-
-    Contains time-informed prospective association predictions
-    """
-
-    content: str
-    evidence: Optional[str] = (
-        None  # original evidence, specific facts supporting this association prediction (no more than 30 characters)
-    )
-    start_time: Optional[str] = None  # event start time, format: YYYY-MM-DD
-    end_time: Optional[str] = None  # event end time, format: YYYY-MM-DD
-    duration_days: Optional[int] = None  # duration in days
-    source_episode_id: Optional[str] = None  # source event ID
-    vector: Optional[List[float]] = None
-    vector_model: Optional[str] = None
+class Foresight(Memory):
+    """Foresight prediction memory."""
+    foresight: Optional[str] = None
+    evidence: Optional[str] = None
+    start_time: Optional[str] = None
+    end_time: Optional[str] = None
+    duration_days: Optional[int] = None
+    parent_episode_id: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
-            "content": self.content,
-            "evidence": self.evidence,
-            "start_time": self.start_time,
-            "end_time": self.end_time,
-            "duration_days": self.duration_days,
-            "source_episode_id": self.source_episode_id,
-            "vector": self.vector,
-            "vector_model": self.vector_model,
-        }
+        d = super().to_dict()
+        d["foresight"] = self.foresight
+        d["evidence"] = self.evidence
+        d["start_time"] = self.start_time
+        d["end_time"] = self.end_time
+        d["duration_days"] = self.duration_days
+        d["parent_episode_id"] = self.parent_episode_id
+        return d

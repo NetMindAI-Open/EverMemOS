@@ -14,7 +14,7 @@ from ..prompts import (
 )
 from ..llm.llm_provider import LLMProvider
 from .base_memory_extractor import MemoryExtractor, MemoryExtractRequest
-from api_specs.memory_types import MemoryType, MemCell, Memory, ForesightItem
+from api_specs.memory_types import MemoryType, MemCell, Memory, Foresight
 from agentic_layer.vectorize_service import get_vectorize_service
 from core.observation.logger import get_logger
 
@@ -71,7 +71,7 @@ class ForesightExtractor(MemoryExtractor):
 
     async def generate_foresights_for_memcell(
         self, memcell: MemCell
-    ) -> List[ForesightItem]:
+    ) -> List[Foresight]:
         """
         Generate foresight association predictions for MemCell
 
@@ -115,8 +115,15 @@ class ForesightExtractor(MemoryExtractor):
 
                 # Parse JSON response
                 start_time = self._extract_start_time_from_timestamp(memcell.timestamp)
+                # For memcell, user_id comes from user_id_list (first user)
+                user_id = memcell.user_id_list[0] if memcell.user_id_list else ""
                 foresights = await self._parse_foresights_response(
-                    response, memcell.event_id, start_time
+                    response,
+                    start_time=start_time,
+                    user_id=user_id,
+                    timestamp=memcell.timestamp,
+                    ori_event_id_list=[memcell.event_id] if memcell.event_id else [],
+                    group_id=memcell.group_id,
                 )
 
                 # Validate at least 1 item is returned
@@ -135,7 +142,7 @@ class ForesightExtractor(MemoryExtractor):
                     f"✅ Successfully generated {len(foresights)} foresight associations"
                 )
                 for i, memory in enumerate(foresights[:3], 1):
-                    logger.info(f"  Association {i}: {memory.content}")
+                    logger.info(f"  Association {i}: {memory.foresight}")
 
                 return foresights
 
@@ -150,7 +157,7 @@ class ForesightExtractor(MemoryExtractor):
 
     async def generate_foresights_for_episode(
         self, episode: Memory
-    ) -> List[ForesightItem]:
+    ) -> List[Foresight]:
         """
         Generate foresight association predictions for EpisodeMemory
 
@@ -183,12 +190,14 @@ class ForesightExtractor(MemoryExtractor):
                 )
 
                 # Parse JSON response
-                source_episode_id = (
-                    episode.ori_event_id_list[0] if episode.ori_event_id_list else None
-                )
                 start_time = self._extract_start_time_from_timestamp(episode.timestamp)
                 foresights = await self._parse_foresights_response(
-                    response, source_episode_id, start_time
+                    response,
+                    start_time=start_time,
+                    user_id=episode.user_id,
+                    timestamp=episode.timestamp,
+                    ori_event_id_list=episode.ori_event_id_list or [],
+                    group_id=episode.group_id,
                 )
 
                 # Validate at least 1 item is returned
@@ -207,7 +216,7 @@ class ForesightExtractor(MemoryExtractor):
                     f"✅ Successfully generated {len(foresights)} foresight associations"
                 )
                 for i, memory in enumerate(foresights[:3], 1):
-                    logger.info(f"  Association {i}: {memory.content}")
+                    logger.info(f"  Association {i}: {memory.foresight}")
 
                 return foresights
 
@@ -258,16 +267,22 @@ class ForesightExtractor(MemoryExtractor):
     async def _parse_foresights_response(
         self,
         response: str,
-        source_episode_id: Optional[str] = None,
         start_time: Optional[str] = None,
-    ) -> List[ForesightItem]:
+        user_id: str = "",
+        timestamp: Optional[datetime] = None,
+        ori_event_id_list: Optional[List[str]] = None,
+        group_id: Optional[str] = None,
+    ) -> List[Foresight]:
         """
         Parse LLM's JSON response to extract foresight association list
 
         Args:
             response: LLM response text
-            source_episode_id: Source event ID
             start_time: Start time, format YYYY-MM-DD
+            user_id: User ID for the foresight
+            timestamp: Timestamp for the foresight
+            ori_event_id_list: Original event ID list
+            group_id: Group ID
 
         Returns:
             List of foresight association items
@@ -321,25 +336,23 @@ class ForesightExtractor(MemoryExtractor):
 
                     items_to_process.append(
                         {
-                            'content': content,
+                            'foresight': content,
                             'evidence': evidence,
                             'start_time': item_start_time,
                             'end_time': item_end_time,
                             'duration_days': item_duration_days,
-                            'source_episode_id': item.get(
-                                'source_episode_id', source_episode_id
-                            ),
+                            'parent_episode_id': item.get('parent_episode_id'),
                         }
                     )
 
                 # Batch compute embeddings for all content (performance optimization)
                 vs = get_vectorize_service()
-                contents = [item['content'] for item in items_to_process]
+                contents = [item['foresight'] for item in items_to_process]
                 vectors_batch = await vs.get_embeddings(
                     contents
                 )  # Use get_embeddings (List[str])
 
-                # Create ForesightItem objects
+                # Create Foresight objects
                 for i, item_data in enumerate(items_to_process):
                     # Handle embedding: could be numpy array or already list
                     vector = vectors_batch[i]
@@ -348,13 +361,18 @@ class ForesightExtractor(MemoryExtractor):
                     elif not isinstance(vector, list):
                         vector = list(vector)
 
-                    memory_item = ForesightItem(
-                        content=item_data['content'],
+                    memory_item = Foresight(
+                        memory_type=MemoryType.FORESIGHT,
+                        user_id=user_id,
+                        timestamp=timestamp or datetime.now(),
+                        ori_event_id_list=ori_event_id_list or [],
+                        group_id=group_id,
+                        foresight=item_data['foresight'],
                         evidence=item_data['evidence'],
                         start_time=item_data['start_time'],
                         end_time=item_data['end_time'],
                         duration_days=item_data['duration_days'],
-                        source_episode_id=item_data['source_episode_id'],
+                        parent_episode_id=item_data['parent_episode_id'],
                         vector=vector,
                         vector_model=vs.get_model_name(),
                     )

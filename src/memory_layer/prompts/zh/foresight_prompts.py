@@ -27,7 +27,7 @@ GROUP_FORESIGHT_GENERATION_PROMPT = """
     "start_time": "2025-01-15",
     "end_time": "2025-01-22",
     "duration_days": 7,
-    "source_episode_id": "group-2025-001"
+    "parent_episode_id": "group-2025-001"
   }
   ...
 ]
@@ -49,7 +49,7 @@ GROUP_FORESIGHT_GENERATION_PROMPT = """
     "start_time": "2025-01-15",
     "end_time": "2025-01-29",
     "duration_days": 14,
-    "source_episode_id": "group-2025-001"
+    "parent_episode_id": "group-2025-001"
   },
   {
     "content": "成员间可能建立更多非正式沟通渠道",
@@ -57,7 +57,7 @@ GROUP_FORESIGHT_GENERATION_PROMPT = """
     "start_time": "2025-01-15",
     "end_time": "2025-01-29",
     "duration_days": 14,
-    "source_episode_id": "group-2025-001"
+    "parent_episode_id": "group-2025-001"
   },
   {
     "content": "团队决策流程可能引入更多成员意见",
@@ -65,7 +65,7 @@ GROUP_FORESIGHT_GENERATION_PROMPT = """
     "start_time": "2025-01-15",
     "end_time": "2025-02-01",
     "duration_days": 17,
-    "source_episode_id": "group-2025-001"
+    "parent_episode_id": "group-2025-001"
   },
   {
     "content": "工作任务分配会更加均衡合理",
@@ -73,7 +73,7 @@ GROUP_FORESIGHT_GENERATION_PROMPT = """
     "start_time": "2025-01-15",
     "end_time": "2025-01-22",
     "duration_days": 7,
-    "source_episode_id": "group-2025-001"
+    "parent_episode_id": "group-2025-001"
   }
   ...
 ]
@@ -95,7 +95,7 @@ GROUP_FORESIGHT_GENERATION_PROMPT = """
     "start_time": "2025-10-23",
     "end_time": "2025-11-06",
     "duration_days": 14,
-    "source_episode_id": "group-2025-002"
+    "parent_episode_id": "group-2025-002"
   },
   {
     "content": "两人的互助默契会进一步加深",
@@ -103,7 +103,7 @@ GROUP_FORESIGHT_GENERATION_PROMPT = """
     "start_time": "2025-10-23",
     "end_time": "2025-11-23",
     "duration_days": 31,
-    "source_episode_id": "group-2025-002"
+    "parent_episode_id": "group-2025-002"
   },
   {
     "content": "近期外出活动会选择更安全的场所和路线",
@@ -111,7 +111,7 @@ GROUP_FORESIGHT_GENERATION_PROMPT = """
     "start_time": "2025-10-23",
     "end_time": "2025-11-06",
     "duration_days": 14,
-    "source_episode_id": "group-2025-002"
+    "parent_episode_id": "group-2025-002"
   },
   {
     "content": "可能形成相互照应的日常生活模式",
@@ -119,7 +119,7 @@ GROUP_FORESIGHT_GENERATION_PROMPT = """
     "start_time": "2025-10-23",
     "end_time": "2025-11-23",
     "duration_days": 31,
-    "source_episode_id": "group-2025-002"
+    "parent_episode_id": "group-2025-002"
   }
   ...
 ]
@@ -134,7 +134,7 @@ GROUP_FORESIGHT_GENERATION_PROMPT = """
   - start_time: 从输入内容中提取事件发生的具体日期（通常在summary或episode中），格式为YYYY-MM-DD
   - end_time: 从原文内容中提取具体的结束时间点，如果原文中有明确的结束时间（如"10月24日前"、"2025-11-15"等），则提取具体日期，否则结合事件内容和常识合理推断
   - duration_days: 从原文内容中提取持续时间，如果原文中有明确的时间描述（如"一周内"、"7天"、"一个月"等），则提取天数，否则结合事件内容和常识合理推断
-  - source_episode_id: 使用输入中的event_id
+  - parent_episode_id: 使用输入中的event_id
   - evidence: 从原文内容中提取支持该联想预测的具体证据，必须是原文中明确提到的事实或行为，不超过30字
   - **重要**：优先从原文中提取明确的时间信息，如果没有则结合事件内容和常识进行合理推断，时间不能为null
 """
@@ -163,7 +163,7 @@ FORESIGHT_GENERATION_PROMPT = """
     "start_time": "2025-10-21",
     "end_time": "2025-10-28",
     "duration_days": 7,
-    "source_episode_id": "test-001"
+    "parent_episode_id": "test-001"
   },
   ...
 ]
@@ -185,7 +185,7 @@ FORESIGHT_GENERATION_PROMPT = """
     "start_time": "2025-10-21",
     "end_time": "2025-10-28",
     "duration_days": 7,
-    "source_episode_id": "test-001"
+    "parent_episode_id": "test-001"
   },
   {
     "content": "XiaoMing近期饮食会避免过热、过硬、辛辣的食物",
@@ -193,7 +193,7 @@ FORESIGHT_GENERATION_PROMPT = """
     "start_time": "2025-10-21",
     "end_time": "2025-10-28",
     "duration_days": 7,
-    "source_episode_id": "test-001"
+    "parent_episode_id": "test-001"
   },
   {
     "content": "XiaoMing会增加使用漱口水等口腔护理产品",
@@ -201,7 +201,7 @@ FORESIGHT_GENERATION_PROMPT = """
     "start_time": "2025-10-21",
     "end_time": "2025-11-21",
     "duration_days": 31,
-    "source_episode_id": "test-001"
+    "parent_episode_id": "test-001"
   },
   {
     "content": "XiaoMing可能向朋友分享术后护理经验",
@@ -209,7 +209,7 @@ FORESIGHT_GENERATION_PROMPT = """
     "start_time": "2025-10-21",
     "end_time": "2025-10-28",
     "duration_days": 7,
-    "source_episode_id": "test-001"
+    "parent_episode_id": "test-001"
   },
   {
     "content": "XiaoMing会调整作息保证充足休息促进恢复",
@@ -217,7 +217,7 @@ FORESIGHT_GENERATION_PROMPT = """
     "start_time": "2025-10-21",
     "end_time": "2025-10-28",
     "duration_days": 7,
-    "source_episode_id": "test-001"
+    "parent_episode_id": "test-001"
   },
   {
     "content": "XiaoMing可能养成定期口腔检查的习惯",
@@ -225,7 +225,7 @@ FORESIGHT_GENERATION_PROMPT = """
     "start_time": "2025-10-21",
     "end_time": "2025-12-21",
     "duration_days": 61,
-    "source_episode_id": "test-001"
+    "parent_episode_id": "test-001"
   }
   ...
 ]
@@ -247,7 +247,7 @@ FORESIGHT_GENERATION_PROMPT = """
     "start_time": "2025-10-24",
     "end_time": "2025-11-24",
     "duration_days": 31,
-    "source_episode_id": "work-001"
+    "parent_episode_id": "work-001"
   },
   {
     "content": "LiHua可能在团队会议中分享新的工作方法",
@@ -255,7 +255,7 @@ FORESIGHT_GENERATION_PROMPT = """
     "start_time": "2025-10-24",
     "end_time": "2025-11-07",
     "duration_days": 14,
-    "source_episode_id": "work-001"
+    "parent_episode_id": "work-001"
   },
   {
     "content": "LiHua会增加与团队成员的日常沟通频率",
@@ -263,7 +263,7 @@ FORESIGHT_GENERATION_PROMPT = """
     "start_time": "2025-10-24",
     "end_time": "2025-11-24",
     "duration_days": 31,
-    "source_episode_id": "work-001"
+    "parent_episode_id": "work-001"
   },
   {
     "content": "LiHua对内部培训和外部课程的关注度会提升",
@@ -271,7 +271,7 @@ FORESIGHT_GENERATION_PROMPT = """
     "start_time": "2025-10-24",
     "end_time": "2025-12-24",
     "duration_days": 61,
-    "source_episode_id": "work-001"
+    "parent_episode_id": "work-001"
   },
   {
     "content": "LiHua在选择工作方法时会更倾向系统化流程",
@@ -279,7 +279,7 @@ FORESIGHT_GENERATION_PROMPT = """
     "start_time": "2025-10-24",
     "end_time": "2026-01-24",
     "duration_days": 92,
-    "source_episode_id": "work-001"
+    "parent_episode_id": "work-001"
   }
   ...
 ]
@@ -295,7 +295,7 @@ FORESIGHT_GENERATION_PROMPT = """
   - start_time: 从输入内容中提取事件发生的具体日期（通常在summary或episode中），格式为YYYY-MM-DD
   - end_time: 从原文内容中提取具体的结束时间点，如果原文中有明确的结束时间（如"10月24日前"、"2025-11-15"等），则提取具体日期，否则结合事件内容和常识合理推断
   - duration_days: 从原文内容中提取持续时间，如果原文中有明确的时间描述（如"一周内"、"7天"、"一个月"等），则提取天数，否则结合事件内容和常识合理推断
-  - source_episode_id: 使用输入中的event_id
+  - parent_episode_id: 使用输入中的event_id
   - evidence: 从输入内容中提取支持该联想预测的具体证据，必须是原文中明确提到的事实或行为，不超过30字
   - **重要**：优先从原文中提取明确的时间信息，如果没有则结合事件内容和常识进行合理推断，时间不能为null
 """

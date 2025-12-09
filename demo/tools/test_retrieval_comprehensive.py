@@ -16,9 +16,21 @@ Usage:
 
 import asyncio
 import httpx
+import os
 from typing import List, Dict, Any
 from datetime import datetime
 import time
+
+
+def get_prompt_language() -> str:
+    """Get Current Prompt Language Setting"""
+    return os.getenv("MEMORY_LANGUAGE", "en")
+
+
+def get_test_query() -> str:
+    """Get test query based on current language setting"""
+    lang = get_prompt_language()
+    return "运动" if lang == "zh" else "Sports"
 
 
 class RetrievalTester:
@@ -430,6 +442,10 @@ async def main():
     # Create Tester
     tester = RetrievalTester()
     
+    # Get query based on language setting
+    test_query = get_test_query()
+    print(f"\n🌐 Language: {get_prompt_language()}, Query: {test_query}")
+    
     # ========== Test 1: Personal Memory Query ==========
     print("\n" + "🔬"*40)
     print("Test Scenario 1: Personal Memory Query")
@@ -437,7 +453,7 @@ async def main():
     test1_start = time.time()
     
     await tester.run_comprehensive_test(
-        query="Sports",
+        query=test_query,
         user_id="user_001",  # Use actual user_id in DB
         group_id=None,  # Do not specify group_id
         current_time=None,  # No current_time to avoid filtering expired group foresight
@@ -457,7 +473,7 @@ async def main():
     test2_start = time.time()
     
     await tester.run_comprehensive_test(
-        query="Sports",
+        query=test_query,
         user_id="user_001",  # Use actual user_id in DB
         group_id="chat_user_001_assistant",  # Use actual group_id in DB
         current_time=None,  # No current_time to avoid filtering expired group foresight
@@ -479,7 +495,7 @@ async def main():
     # Test currently valid foresight
     print("\n  📅 Sub-test 3.1: Retrieve currently valid foresight")
     result_current = await tester.test_retrieval(
-        query="Sports",
+        query=test_query,
         data_source="foresight",
         memory_scope="personal",
         retrieval_mode="rrf",
@@ -490,7 +506,7 @@ async def main():
     # Test future time (should return more memories)
     print("\n  📅 Sub-test 3.2: Retrieve foresight for future time (includes long-term predictions)")
     result_future = await tester.test_retrieval(
-        query="Sports",
+        query=test_query,
         data_source="foresight",
         memory_scope="personal",
         retrieval_mode="rrf",
@@ -502,7 +518,7 @@ async def main():
     # Test past time (should return fewer memories)
     print("\n  📅 Sub-test 3.3: Retrieve foresight for past time (expired memories)")
     result_past = await tester.test_retrieval(
-        query="Sports",
+        query=test_query,
         data_source="foresight",
         memory_scope="personal",
         retrieval_mode="rrf",
@@ -552,8 +568,9 @@ async def demo_foresight_evidence():
     print("   Evidence field storage reason: 'Just removed wisdom tooth'")
     print("   When user queries 'recommended food', they can see the recommendation basis")
     
+    test_query = get_test_query()
     payload = {
-        "query": "Sports",
+        "query": test_query,
         "user_id": "robot_001",  # Use actual user_id in DB
         "data_source": "foresight",
         "retrieval_mode": "rrf",
