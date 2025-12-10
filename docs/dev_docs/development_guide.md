@@ -367,7 +367,7 @@ class OrderService:
 
 ## ⚙️ Development Environment Configuration
 
-**Note**: Before starting development, please ensure the virtual environment is configured and dependencies are synced (`uv sync --dev`), then run `make setup-hooks` to install code format checking tools to ensure code style consistency.
+**Note**: Before starting development, run `make dev-setup` to set up the development environment (sync dependencies + install code check hooks).
 
 ### 1. Environment Variable Configuration
 

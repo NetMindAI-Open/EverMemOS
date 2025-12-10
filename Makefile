@@ -1,13 +1,23 @@
-.PHONY: setup-hooks uninstall-hooks lint test clean help
+.PHONY: dev-setup setup-hooks lint test clean help
 
 # Default target
 help:
 	@echo "Available targets:"
-	@echo "  setup-hooks      - Install pre-commit hooks (pre-commit + commit-msg)"
+	@echo "  dev-setup        - Full dev environment setup (sync deps + install hooks)"
+	@echo "  setup-hooks      - Install pre-commit hooks only"
 	@echo "  lint             - Run linters"
 	@echo "  test             - Run tests"
 	@echo "  clean            - Clean up generated files"
 	@echo "  help             - Show this help message"
+
+# Full development environment setup
+dev-setup:
+	@echo "Setting up development environment..."
+	@echo "1. Syncing dependencies..."
+	uv sync --dev
+	@echo "2. Installing pre-commit hooks..."
+	@$(MAKE) setup-hooks
+	@echo "Development environment is ready!"
 
 # Install pre-commit hooks (clean install)
 setup-hooks:
