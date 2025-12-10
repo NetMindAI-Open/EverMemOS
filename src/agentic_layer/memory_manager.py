@@ -406,31 +406,23 @@ class MemoryManager:
             current_time_dt = None
 
             if start_time is not None:
-                if isinstance(start_time, str):
-                    # If date format "2024-01-01", convert to start of day
-                    start_time_dt = datetime.strptime(start_time, "%Y-%m-%d")
-                else:
-                    start_time_dt = start_time
+                start_time_dt = from_iso_format(start_time) if isinstance(start_time, str) else start_time
 
             if end_time is not None:
                 if isinstance(end_time, str):
-                    # If date format "2024-12-31", convert to end of day
-                    end_time_dt = datetime.strptime(end_time, "%Y-%m-%d")
-                    # Set to 23:59:59 of that day, ensuring full day inclusion
-                    end_time_dt = end_time_dt.replace(hour=23, minute=59, second=59)
+                    end_time_dt = from_iso_format(end_time)
+                    # If date only format, set to end of day
+                    if len(end_time) == 10:
+                        end_time_dt = end_time_dt.replace(hour=23, minute=59, second=59)
                 else:
                     end_time_dt = end_time
 
             # Handle foresight time range (only valid for foresight)
             if MemoryType.FORESIGHT in retrieve_mem_request.memory_types:
                 if retrieve_mem_request.start_time:
-                    foresight_start_dt = datetime.strptime(
-                        retrieve_mem_request.start_time, "%Y-%m-%d"
-                    )
+                    foresight_start_dt = from_iso_format(retrieve_mem_request.start_time)
                 if retrieve_mem_request.end_time:
-                    foresight_end_dt = datetime.strptime(
-                        retrieve_mem_request.end_time, "%Y-%m-%d"
-                    )
+                    foresight_end_dt = from_iso_format(retrieve_mem_request.end_time)
                 if retrieve_mem_request.current_time:
                     current_time_dt = datetime.strptime(
                         retrieve_mem_request.current_time, "%Y-%m-%d"
@@ -572,35 +564,25 @@ class MemoryManager:
             current_time_dt = None
 
             if start_time is not None:
-                if isinstance(start_time, str):
-                    # If date format "2024-01-01", convert to start of day
-                    start_time_dt = datetime.strptime(start_time, "%Y-%m-%d")
-                else:
-                    start_time_dt = start_time
+                start_time_dt = from_iso_format(start_time) if isinstance(start_time, str) else start_time
 
             if end_time is not None:
                 if isinstance(end_time, str):
-                    # If date format "2024-12-31", convert to end of day
-                    end_time_dt = datetime.strptime(end_time, "%Y-%m-%d")
-                    # Set to 23:59:59 of that day, ensuring full day inclusion
-                    end_time_dt = end_time_dt.replace(hour=23, minute=59, second=59)
+                    end_time_dt = from_iso_format(end_time)
+                    # If date only format, set to end of day
+                    if len(end_time) == 10:
+                        end_time_dt = end_time_dt.replace(hour=23, minute=59, second=59)
                 else:
                     end_time_dt = end_time
 
             # Handle foresight time range (only valid for foresight)
             if MemoryType.FORESIGHT in retrieve_mem_request.memory_types:
                 if retrieve_mem_request.start_time:
-                    start_time_dt = datetime.strptime(
-                        retrieve_mem_request.start_time, "%Y-%m-%d"
-                    )
+                    start_time_dt = from_iso_format(retrieve_mem_request.start_time)
                 if retrieve_mem_request.end_time:
-                    end_time_dt = datetime.strptime(
-                        retrieve_mem_request.end_time, "%Y-%m-%d"
-                    )
+                    end_time_dt = from_iso_format(retrieve_mem_request.end_time)
                 if retrieve_mem_request.current_time:
-                    current_time_dt = datetime.strptime(
-                        retrieve_mem_request.current_time, "%Y-%m-%d"
-                    )
+                    current_time_dt = from_iso_format(retrieve_mem_request.current_time)
 
             # Call Milvus vector search (pass different parameters based on memory type)
             if MemoryType.FORESIGHT in retrieve_mem_request.memory_types:

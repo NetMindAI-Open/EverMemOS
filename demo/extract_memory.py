@@ -2,7 +2,6 @@ import asyncio
 import json, os
 from pathlib import Path
 import httpx
-
 from demo.tools.clear_all_data import clear_all_memories
 
 
@@ -37,16 +36,16 @@ def load_conversation_data(file_path: str) -> tuple:
     return messages, group_id, group_name
 
 
-async def test_v3_memorize_api():
-    """Test V3 API /memorize endpoint (single message storage)"""
+async def test_memorize_api():
+    """Test V1 API /memorize endpoint (single message storage)"""
 
     await clear_all_memories()
     
-    base_url = "http://localhost:8001" 
-    memorize_url = f"{base_url}/api/v3/agentic/memorize"  # Correct route path
+    base_url = "http://localhost:1995" 
+    memorize_url = f"{base_url}/api/v1/memories"
     
     print("=" * 100)
-    print("🧪 Test V3 API HTTP Interface - Memory Storage")
+    print("🧪 Test V1 API HTTP Interface - Memory Storage")
     print("=" * 100)
     
     # Load real conversation data
@@ -64,7 +63,7 @@ async def test_v3_memorize_api():
     
     profile_scene = "assistant"
     
-    print(f"\n📤 Sending {len(test_messages)} messages to V3 API")
+    print(f"\n📤 Sending {len(test_messages)} messages to V1 API")
     print(f"   URL: {memorize_url}")
     print(f"   Profile scene: {profile_scene}")
     print()
@@ -107,13 +106,18 @@ async def test_v3_memorize_api():
                         # Compatible with old versions or other statuses
                         total_accumulated += 1
                         print(f"   ⏳ Queued")
+                elif response.status_code == 202:
+                    result = response.json()
+                    total_processing += 1
+                    request_id = result.get("request_id", "")
+                    print(f"   🔄 Processing (request_id: {request_id[:8]})")
                 else:
                     print(f"   ✗ Failed: HTTP {response.status_code}")
                     print(f"      {response.text[:200]}")
                     
             except httpx.ConnectError:
                 print(f"   ✗ Connection failed: Unable to connect to {base_url}")
-                print(f"      Ensure V3 API service is running")
+                print(f"      Ensure API service is running")
                 return False
             except httpx.ReadTimeout:
                 print(f"   ⚠ Timeout: Processing exceeded 500s")
@@ -148,4 +152,4 @@ async def test_v3_memorize_api():
     return True
 
 if __name__ == "__main__":
-    asyncio.run(test_v3_memorize_api())
+    asyncio.run(test_memorize_api())
