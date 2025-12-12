@@ -102,7 +102,6 @@ class RawData:  # Memcell this is actually more oriented towards input, this is 
             'create_timestamp',
             'last_update_timestamp',
             'modify_timestamp',
-            'readUpdateTime',
             'created_at',
             'updated_at',
             'joinTime',
@@ -252,9 +251,3 @@ class MemorizeRequest:
     # Optional extraction control parameters
     enable_foresight_extraction: bool = True  # Whether to extract foresight
     enable_event_log_extraction: bool = True  # Whether to extract event logs
-
-
-@dataclass
-class MemorizeOfflineRequest:
-    memorize_from: datetime
-    memorize_to: datetime

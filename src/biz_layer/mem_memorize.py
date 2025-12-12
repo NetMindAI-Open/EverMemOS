@@ -1294,13 +1294,3 @@ async def memorize(request: MemorizeRequest) -> int:
         traceback.print_exc()
         return 0
 
-
-def get_version_from_request(request: MemorizeOfflineRequest) -> str:
-    # 1. Get memorize_to date
-    target_date = request.memorize_to
-
-    # 2. Go back one day
-    previous_day = target_date - timedelta(days=1)
-
-    # 3. Format as "YYYY-MM" string
-    return previous_day.strftime("%Y-%m")
