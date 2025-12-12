@@ -236,7 +236,7 @@ def convert_simple_message_to_memorize_input(
     """
     Convert simple direct single message format to memorize interface input format
 
-    This is the simple format used by V3 memorize interface, without complex GroupChatFormat structure.
+    This is the simple format used by V1 memorize interface, without complex GroupChatFormat structure.
 
     Args:
         message_data: Simple single message data, containing:

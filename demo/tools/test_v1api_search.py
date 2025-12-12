@@ -17,19 +17,20 @@ import asyncio
 import json
 import os
 from typing import Dict, Any
-
+import dotenv
+dotenv.load_dotenv()
 # Get language setting from environment variable
-MEMORY_LANGUAGE = os.getenv('MEMORY_LANGUAGE', 'zh').lower()
+MEMORY_LANGUAGE = os.getenv('MEMORY_LANGUAGE').lower()
 
 # Query words based on language setting
 QUERY_WORDS = {
     'zh': {'default': '我喜欢什么运动', 'travel': '旅游'},
-    'en': {'default': 'What sports do I like', 'travel': 'Where have I traveled'},
+    'en': {'default': 'What sports do I like', 'travel': 'travel'},
 }
 
 def get_query_word(key: str = 'default') -> str:
     """Get query word based on MEMORY_LANGUAGE setting"""
-    lang = MEMORY_LANGUAGE if MEMORY_LANGUAGE in QUERY_WORDS else 'zh'
+    lang = MEMORY_LANGUAGE
     return QUERY_WORDS[lang].get(key, QUERY_WORDS[lang]['default'])
 
 
@@ -105,24 +106,17 @@ class V1APITester:
         
         # Calculate total record count
         total_records = 0
-        is_v3_format = False
-        
+
         for mem in memories:
             if "profile_data" in mem:
-                # V1 Profile type
                 total_records += 1
             elif "profile" in mem:
-                # V3 Profile type
                 total_records += 1
-                is_v3_format = True
             elif "score" in mem:
-                # V3 Search result (flat list)
                 total_records += 1
-                is_v3_format = True
             elif "summary" in mem or "title" in mem or "atomic_fact" in mem or "content" in mem:
                 # Fetch returns episodic/event_log/foresight types
                 total_records += 1
-                is_v3_format = True
             elif isinstance(mem, dict):
                 # V1 Search result: {group_id: [records]} structure
                 for group_id, records in mem.items():
@@ -130,10 +124,7 @@ class V1APITester:
                         total_records += len(records)
         
         status_icon = "✅" if status == "ok" else "❌"
-        if is_v3_format:
-            print(f"{status_icon} {name}: status={status}, records={total_records}")
-        else:
-            print(f"{status_icon} {name}: status={status}, groups={count}, records={total_records}")
+        print(f"{status_icon} {name}: status={status}, groups={count}, records={total_records}")
         
         # Print detailed content
         if verbose and memories:
@@ -153,13 +144,12 @@ class V1APITester:
                         print(f"     personality: {len(profile.get('personality', []))} items")
                         print(f"     interests: {len(profile.get('interests', []))} items")
                 elif "profile" in mem:
-                    # V3 Profile type
+                    # V1 Profile type
                     print(f"  📝 Profile:")
                     print(f"     user_id: {mem.get('user_id')}")
                     print(f"     group_id: {mem.get('group_id')}")
                     print(f"     scenario: {mem.get('scenario')}")
                 elif "score" in mem:
-                    # V3 Search result (flat list)
                     # Select display field based on data source
                     content = (
                         mem.get('foresight') or  # foresight

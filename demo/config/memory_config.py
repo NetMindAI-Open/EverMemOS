@@ -96,7 +96,7 @@ class ChatModeConfig:
     """Chat system configuration - using reasonable default values"""
     
     # Core parameters (usually no need to modify)
-    api_base_url: str = field(default_factory=lambda: os.getenv("API_BASE_URL", "http://localhost:8001"))
+    api_base_url: str = field(default_factory=lambda: os.getenv("API_BASE_URL", "http://localhost:1995"))
     top_k_memories: int = 20
     conversation_history_size: int = 10
     time_range_days: int = 365

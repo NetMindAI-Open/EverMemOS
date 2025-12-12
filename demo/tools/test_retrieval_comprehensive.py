@@ -8,7 +8,7 @@ Test all retrieval mode combinations:
 
 Usage:
     # Ensure API server is started
-    uv run python src/run.py --port 8001
+    uv run python src/run.py
     
     # Run test in another terminal
     uv run python src/bootstrap.py demo/tools/test_retrieval_comprehensive.py
@@ -31,7 +31,7 @@ def get_test_query() -> str:
 class RetrievalTester:
     """Comprehensive Retrieval Tester"""
 
-    def __init__(self, base_url: str = "http://localhost:8001"):
+    def __init__(self, base_url: str = "http://localhost:1995"):
         """Initialize Tester
 
         Args:
@@ -517,7 +517,7 @@ async def main():
         f"\nTotal Tests: 3 × 3 × 3 + profile(1) = 28 combinations (Profile skipped if missing group_id)"
     )
     print(
-        "\n⚠️  Please ensure API server is started: uv run python src/bootstrap.py src/run.py --port 8001"
+        "\n⚠️  Please ensure API server is started: uv run python src/bootstrap.py src/run.py"
     )
     print("\nPress Enter to continue...")
     input()
@@ -653,7 +653,7 @@ async def demo_foresight_evidence():
     print("💡 Foresight Evidence Field Demo")
     print("=" * 80)
 
-    base_url = "http://localhost:8001"
+    base_url = "http://localhost:1995"
     retrieve_url = f"{base_url}/api/v1/memories/search"
     
     print("\n📖 Scenario Description:")
@@ -729,7 +729,7 @@ async def demo_foresight_evidence():
     except httpx.ConnectError:
         print(f"\n❌ Cannot connect to API server ({base_url})")
         print(
-            "   Please start service first: uv run python src/bootstrap.py src/run.py --port 8001"
+            "   Please start service first: uv run python src/bootstrap.py src/run.py"
         )
     except Exception as e:
         print(f"\n❌ Exception: {e}")
