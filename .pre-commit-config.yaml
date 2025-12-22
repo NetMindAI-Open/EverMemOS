@@ -26,3 +26,13 @@ repos:
         pass_filenames: true
         always_run: true
         # Skip by adding [skip-i18n] or #skip-i18n-check in commit message
+
+    # Check for sensitive information in staged files
+    -   id: check-sensitive-info
+        name: Check Sensitive Information
+        entry: env PYTHONPATH=src python -m devops_scripts.sensitive_info.sensitive_info_tool hook
+        language: system
+        stages: [pre-commit]
+        pass_filenames: true
+        # Skip this hook by setting SKIP_SENSITIVE_CHECK=1
+        # Skip specific lines by adding #skip-sensitive-check comment

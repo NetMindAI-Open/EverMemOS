@@ -98,6 +98,8 @@ SKIP_FILES = [
 HOOK_SKIP_PATTERNS = [
     # i18n tool itself contains CJK examples in prompts
     "src/devops_scripts/i18n/i18n_tool.py",
+    # sensitive info tool contains CJK examples in AI prompts
+    "src/devops_scripts/sensitive_info/sensitive_info_tool.py",
     # Prompt files may contain CJK
     "src/memory_layer/prompts/*",
     # Test files that specifically test i18n handling
@@ -153,6 +155,15 @@ HOOK_SKIP_COMMIT_MSG_KEYWORDS = [
 # Inline comment to skip i18n check for a specific line
 # Usage: code_with_chinese()  #skip-i18n-check
 HOOK_SKIP_LINE_COMMENT = "#skip-i18n-check"
+
+# File-level skip marker - add this at the top of a file to skip the entire file
+# Usage: Add "# skip-i18n-file" or "#skip-i18n-file" in the first 10 lines
+HOOK_SKIP_FILE_MARKERS = [
+    "#skip-i18n-file",
+    "# skip-i18n-file",
+    "#  skip-i18n-file",
+    "# -*- skip-i18n-file -*-",
+]
 
 # CJK Unicode ranges (Chinese, Japanese, Korean)
 CJK_PATTERN = re.compile(
@@ -1299,14 +1310,36 @@ def _hook_line_has_skip_comment(line: str) -> bool:
     return "#skip-i18n-check" in normalized
 
 
+def _hook_file_has_skip_marker(content: str) -> bool:
+    """Check if file has a skip-i18n-file marker in the first 10 lines.
+
+    The marker can be:
+    - #skip-i18n-file
+    - # skip-i18n-file
+    - # -*- skip-i18n-file -*-
+    """
+    lines = content.split("\n")[:10]  # Only check first 10 lines
+    for line in lines:
+        line_lower = line.lower().strip()
+        for marker in HOOK_SKIP_FILE_MARKERS:
+            if marker in line_lower:
+                return True
+    return False
+
+
 def _hook_find_cjk_lines(content: str) -> list[tuple[int, str]]:
     """Find all lines containing CJK characters.
 
     Lines with #skip-i18n-check comment are skipped.
+    If file has #skip-i18n-file marker in first 10 lines, entire file is skipped.
 
     Returns:
         List of tuples: (line_number, line_content)
     """
+    # Check for file-level skip marker
+    if _hook_file_has_skip_marker(content):
+        return []
+
     cjk_lines = []
     for line_num, line in enumerate(content.split("\n"), 1):
         # Skip lines with inline skip comment
@@ -1446,6 +1479,10 @@ def _hook_print_error_report(
     print("\n" + "-" * 70, file=sys.stderr)
     print("TO SKIP THIS CHECK (use sparingly):", file=sys.stderr)
     print("-" * 70, file=sys.stderr)
+    print(
+        "  • Add '# skip-i18n-file' in first 10 lines to skip entire file",
+        file=sys.stderr,
+    )
     print(
         "  • Add inline comment to skip specific line: #skip-i18n-check",
         file=sys.stderr,
