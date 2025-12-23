@@ -308,7 +308,7 @@ class MemoryController(BaseController):
                             "code": ErrorCode.INVALID_PARAMETER.value,
                             "message": "user_id cannot be empty",
                             "timestamp": "2024-01-15T10:30:00+00:00",
-                            "path": "/api/v1/memories/fetch",
+                            "path": "/api/v1/memories",
                         }
                     }
                 },
@@ -322,7 +322,7 @@ class MemoryController(BaseController):
                             "code": ErrorCode.SYSTEM_ERROR.value,
                             "message": "Failed to retrieve memory, please try again later",
                             "timestamp": "2024-01-15T10:30:00+00:00",
-                            "path": "/api/v1/memories/fetch",
+                            "path": "/api/v1/memories",
                         }
                     }
                 },
