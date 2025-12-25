@@ -38,6 +38,8 @@ class AppLogicMiddleware(BaseHTTPMiddleware):
 
         # Set context
         set_current_request(request)
+        # _CachedRequest is a subclass of Request, it caches the request body in memory
+        await request.body()
         if app_info:
             set_current_app_info(app_info)
 
