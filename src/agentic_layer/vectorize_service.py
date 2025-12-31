@@ -1,45 +1,54 @@
 """
-Vectorize Service
-Vectorization service
+Vectorize Service - Hybrid Implementation with Automatic Fallback
 
-This module provides methods to call DeepInfra or vLLM API for getting text embeddings.
+This is the main vectorization service with built-in resilience.
+Implements a hybrid strategy with flexible provider selection and automatic fallback.
+
+Usage:
+    from agentic_layer.vectorize_service import get_vectorize_service
+    
+    service = get_vectorize_service()
+    embedding = await service.get_embedding("Hello world")  # Auto-fallback
 """
 
-from __future__ import annotations
-
-import os
-import asyncio
 import logging
-from abc import ABC, abstractmethod
-from enum import Enum
-from typing import List, Dict, Any, Optional, Tuple
-from dataclasses import dataclass
+import os
+from typing import Optional, List, Tuple
+from dataclasses import dataclass, field
 import numpy as np
-from openai import AsyncOpenAI, BadRequestError
 
-from core.di.utils import get_bean
 from core.di.decorators import service
-from memory_layer.constants import VECTORIZE_DIMENSIONS
+
+from agentic_layer.vectorize_interface import VectorizeServiceInterface, VectorizeError, UsageInfo
+from agentic_layer.vectorize_vllm import VllmVectorizeService, VllmVectorizeConfig
+from agentic_layer.vectorize_deepinfra import (
+    DeepInfraVectorizeService,
+    DeepInfraVectorizeConfig,
+)
 
 logger = logging.getLogger(__name__)
 
 
-class VectorizeProvider(str, Enum):
-    """Vectorization service provider enum"""
-
-    DEEPINFRA = "deepinfra"
-    VLLM = "vllm"
-
-
 @dataclass
-@service(name="vectorize_config", primary=True)
-class VectorizeConfig:
-    """Vectorize API configuration class"""
+class HybridVectorizeConfig:
+    """Configuration for hybrid vectorize service with fallback"""
 
-    provider: VectorizeProvider = VectorizeProvider.DEEPINFRA
-    api_key: str = ""
-    base_url: str = ""
-    model: str = ""
+    # Provider types
+    primary_provider: str = "vllm"  # vllm or deepinfra
+    fallback_provider: str = "deepinfra"  # vllm, deepinfra, or none
+
+    # Primary service config
+    primary_api_key: str = ""
+    primary_base_url: str = ""
+
+    # Fallback service config
+    fallback_api_key: str = ""
+    fallback_base_url: str = ""
+
+    # Shared model configuration
+    model: str = "Qwen/Qwen3-Embedding-4B"
+
+    # Common settings
     timeout: int = 30
     max_retries: int = 3
     batch_size: int = 10
@@ -47,363 +56,365 @@ class VectorizeConfig:
     encoding_format: str = "float"
     dimensions: int = 1024
 
+    # Fallback behavior
+    enable_fallback: bool = True
+    max_primary_failures: int = 3
+
+    # Runtime state (failure tracking)
+    _primary_failure_count: int = field(default=0, init=False, repr=False)
+
     def __post_init__(self):
-        """Load configuration values from environment variables after initialization"""
-        # Handle provider
-        env_provider = os.getenv("VECTORIZE_PROVIDER")
-        if env_provider:
-            provider_str = env_provider.lower()
-            try:
-                self.provider = VectorizeProvider(provider_str)
-            except ValueError:
-                logger.error(
-                    f"Invalid provider '{provider_str}', expected one of {[p.value for p in VectorizeProvider]}"
-                )
-                raise ValueError(
-                    f"Invalid provider '{provider_str}', expected one of {[p.value for p in VectorizeProvider]}"
-                )
+        """Load hybrid service configuration from environment"""
+        # Read provider types
+        self.primary_provider = os.getenv("VECTORIZE_PROVIDER", self.primary_provider)
+        self.fallback_provider = os.getenv("VECTORIZE_FALLBACK_PROVIDER", self.fallback_provider)
 
-        if not self.api_key:
-            self.api_key = os.getenv("VECTORIZE_API_KEY") or os.getenv(
-                "VECTORIZE_API_KEY", ""
+        # Read primary service config
+        self.primary_api_key = os.getenv("VECTORIZE_API_KEY", self.primary_api_key)
+        self.primary_base_url = os.getenv("VECTORIZE_BASE_URL", self.primary_base_url)
+
+        # Read fallback service config
+        self.fallback_api_key = os.getenv("VECTORIZE_FALLBACK_API_KEY", self.fallback_api_key)
+        self.fallback_base_url = os.getenv("VECTORIZE_FALLBACK_BASE_URL", self.fallback_base_url)
+
+        # Read shared model configuration
+        self.model = os.getenv("VECTORIZE_MODEL", self.model)
+
+        # Read common settings
+        self.timeout = int(os.getenv("VECTORIZE_TIMEOUT", str(self.timeout)))
+        self.max_retries = int(os.getenv("VECTORIZE_MAX_RETRIES", str(self.max_retries)))
+        self.batch_size = int(os.getenv("VECTORIZE_BATCH_SIZE", str(self.batch_size)))
+        self.max_concurrent_requests = int(
+            os.getenv("VECTORIZE_MAX_CONCURRENT", str(self.max_concurrent_requests))
+        )
+        self.encoding_format = os.getenv("VECTORIZE_ENCODING_FORMAT", self.encoding_format)
+        self.dimensions = int(os.getenv("VECTORIZE_DIMENSIONS", str(self.dimensions)))
+
+        # Fallback behavior
+        # Enable fallback only if:
+        # 1. fallback_provider is not "none"
+        # 2. fallback_base_url is configured
+        # 3. fallback_api_key is configured (or not required for vllm)
+        self.enable_fallback = (
+            self.fallback_provider.lower() != "none"
+            and bool(self.fallback_base_url)
+            and (
+                self.fallback_provider.lower() == "vllm"  # vllm doesn't require API key
+                or bool(self.fallback_api_key)  # deepinfra requires API key
             )
-            if self.provider == VectorizeProvider.VLLM and not self.api_key:
-                self.api_key = "EMPTY"
-
-        if not self.base_url:
-            default_url = "https://api.deepinfra.com/v1/openai"
-            if self.provider == VectorizeProvider.VLLM:
-                default_url = "http://localhost:8000/v1"  # Standard vLLM port
-
-            self.base_url = os.getenv("VECTORIZE_BASE_URL", default_url)
-
-        if not self.model:
-            self.model = os.getenv("VECTORIZE_MODEL", "Qwen/Qwen3-Embedding-4B")
-
-        if self.timeout == 30:
-            self.timeout = int(os.getenv("VECTORIZE_TIMEOUT", "30"))
-        if self.max_retries == 3:
-            self.max_retries = int(os.getenv("VECTORIZE_MAX_RETRIES", "3"))
-        if self.batch_size == 10:
-            self.batch_size = int(
-                os.getenv("VECTORIZE_BATCH_SIZE")
-                or os.getenv("VECTORIZE_BATCH_SIZE", "10")
-            )
-        if self.max_concurrent_requests == 5:
-            self.max_concurrent_requests = int(
-                os.getenv("VECTORIZE_MAX_CONCURRENT", "5")
-            )
-        if self.encoding_format == "float":
-            self.encoding_format = os.getenv("VECTORIZE_ENCODING_FORMAT", "float")
-        if self.dimensions == 1024:
-            self.dimensions = VECTORIZE_DIMENSIONS
+        )
+        self.max_primary_failures = int(
+            os.getenv("VECTORIZE_MAX_PRIMARY_FAILURES", str(self.max_primary_failures))
+        )
+        
 
 
-class VectorizeError(Exception):
-    """Vectorize API error exception class"""
-
-    pass
-
-
-@dataclass
-class UsageInfo:
-    """Token usage information"""
-
-    prompt_tokens: int
-    total_tokens: int
-
-    @classmethod
-    def from_openai_usage(cls, usage) -> "UsageInfo":
-        """Create UsageInfo object from OpenAI usage object"""
-        return cls(prompt_tokens=usage.prompt_tokens, total_tokens=usage.total_tokens)
-
-
-class VectorizeServiceInterface(ABC):
-    """Vectorization service interface"""
-
-    @abstractmethod
-    async def get_embedding(
-        self, text: str, instruction: Optional[str] = None
-    ) -> np.ndarray:
-        pass
-
-    @abstractmethod
-    async def get_embedding_with_usage(
-        self, text: str, instruction: Optional[str] = None
-    ) -> Tuple[np.ndarray, Optional[UsageInfo]]:
-        pass
-
-    @abstractmethod
-    async def get_embeddings(
-        self, texts: List[str], instruction: Optional[str] = None
-    ) -> List[np.ndarray]:
-        pass
-
-    @abstractmethod
-    async def get_embeddings_batch(
-        self, text_batches: List[List[str]], instruction: Optional[str] = None
-    ) -> List[List[np.ndarray]]:
-        pass
-
-    @abstractmethod
-    def get_model_name(self) -> str:
-        """
-        Get the current model name
-
-        Returns:
-            str: Model name
-        """
-        pass
-
-
-@service(name="vectorize_service", primary=True)
-class VectorizeService(VectorizeServiceInterface):
+def _create_service_from_config(
+    provider: str,
+    api_key: str,
+    base_url: str,
+    model: str,
+    timeout: int,
+    max_retries: int,
+    batch_size: int,
+    max_concurrent: int,
+    encoding_format: str,
+    dimensions: int,
+) -> VectorizeServiceInterface:
     """
-    Generic vectorization service class (supports DeepInfra, vLLM and other OpenAI-compatible interfaces)
+    Factory function to create a vectorize service based on provider type
+    
+    Args:
+        provider: Provider type (vllm or deepinfra)
+        api_key: API key for the service
+        base_url: Base URL for the service
+        model: Model name
+        timeout: Request timeout in seconds
+        max_retries: Maximum retry attempts
+        batch_size: Batch size for requests
+        max_concurrent: Maximum concurrent requests
+        encoding_format: Encoding format for embeddings
+        dimensions: Vector dimensions
+        
+    Returns:
+        VectorizeServiceInterface: The created service instance
+    """
+    if provider.lower() == "vllm":
+        config = VllmVectorizeConfig(
+            api_key=api_key,
+            base_url=base_url,
+            model=model,
+            timeout=timeout,
+            max_retries=max_retries,
+            batch_size=batch_size,
+            max_concurrent_requests=max_concurrent,
+            encoding_format=encoding_format,
+            dimensions=dimensions,
+        )
+        return VllmVectorizeService(config)
+    elif provider.lower() == "deepinfra":
+        config = DeepInfraVectorizeConfig(
+            api_key=api_key,
+            base_url=base_url,
+            model=model,
+            timeout=timeout,
+            max_retries=max_retries,
+            batch_size=batch_size,
+            max_concurrent_requests=max_concurrent,
+            encoding_format=encoding_format,
+            dimensions=dimensions,
+        )
+        return DeepInfraVectorizeService(config)
+    else:
+        raise VectorizeError(f"Unsupported provider: {provider}")
+
+
+class HybridVectorizeService(VectorizeServiceInterface):
+    """
+    Hybrid Vectorization Service with Automatic Fallback
+    
+    This service implements a dual-strategy approach:
+    1. Implements VectorizeServiceInterface with full API
+    2. Primary: Configurable provider (vllm or deepinfra)
+    3. Secondary: Configurable fallback provider
+    4. Automatic failover on errors with failure tracking
+    5. All method calls transparently use fallback logic
+    
+    Strategy Benefits:
+    - Cost optimization: ~95% savings with vllm self-deployed service
+    - High availability: Automatic failover ensures reliability
+    - Zero downtime: Continues working during vllm service maintenance
+    
+    Usage:
+        service = HybridVectorizeService()
+        embedding = await service.get_embedding("Hello")  # Auto-fallback built-in
     """
 
-    def __init__(self, config: Optional[VectorizeConfig] = None):
+    def __init__(self, config: Optional[HybridVectorizeConfig] = None):
         if config is None:
-            try:
-                from core.di import get_bean
-
-                config = get_bean("vectorize_config")
-                logger.info("Vectorize config source: DI bean 'vectorize_config'")
-            except Exception:
-                config = self._load_config_from_env()
-                logger.info("Vectorize config source: env")
-
-        # Normalize configuration
-        base_url = config.base_url or ""
-        if base_url and not (
-            base_url.startswith("http://") or base_url.startswith("https://")
-        ):
-            # Default based on provider, or default to https
-            base_url = f"https://{base_url}"
-
-        config.base_url = base_url
+            config = HybridVectorizeConfig()
 
         self.config = config
-        self.client: Optional[AsyncOpenAI] = None
-        self._semaphore = asyncio.Semaphore(config.max_concurrent_requests)
+        
+        # Create primary service based on provider type
+        self.primary_service = _create_service_from_config(
+            provider=config.primary_provider,
+            api_key=config.primary_api_key,
+            base_url=config.primary_base_url,
+            model=config.model,  # Use shared model
+            timeout=config.timeout,
+            max_retries=config.max_retries,
+            batch_size=config.batch_size,
+            max_concurrent=config.max_concurrent_requests,
+            encoding_format=config.encoding_format,
+            dimensions=config.dimensions,
+        )
+        
+        # Create fallback service if enabled
+        self.fallback_service = None
+        if config.enable_fallback:
+            self.fallback_service = _create_service_from_config(
+                provider=config.fallback_provider,
+                api_key=config.fallback_api_key,
+                base_url=config.fallback_base_url,
+                model=config.model,  # Use shared model
+                timeout=config.timeout,
+                max_retries=config.max_retries,
+                batch_size=config.batch_size,
+                max_concurrent=config.max_concurrent_requests,
+                encoding_format=config.encoding_format,
+                dimensions=config.dimensions,
+            )
 
         logger.info(
-            f"Initialized Vectorize Service | provider={config.provider.value} | model={config.model} | base_url={config.base_url}"
+            f"Initialized HybridVectorizeService | "
+            f"primary={config.primary_provider} | "
+            f"fallback={config.fallback_provider} | "
+            f"fallback_enabled={config.enable_fallback} | "
+            f"max_failures={config.max_primary_failures}"
         )
 
-    def _load_config_from_env(self) -> VectorizeConfig:
-        """Load configuration from environment variables"""
-        return VectorizeConfig()
-
-    async def __aenter__(self):
-        await self._ensure_client()
-        return self
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        await self.close()
-
-    async def _ensure_client(self):
-        if self.client is None:
-            self.client = AsyncOpenAI(
-                api_key=self.config.api_key,
-                base_url=self.config.base_url,
-                timeout=self.config.timeout,
-            )
-
-    async def close(self):
-        if self.client:
-            await self.client.close()
-            self.client = None
-
-    async def _make_request(
-        self,
-        texts: List[str],
-        instruction: Optional[str] = None,
-        is_query: bool = False,
-    ):
-        await self._ensure_client()
-        if not self.config.model:
-            raise VectorizeError("Embedding model is not configured.")
-
-        # If is_query=True, wrap text with instruction format
-        if is_query:
-            default_instruction = (
-                "Given a search query, retrieve relevant passages that answer the query"
-            )
-            final_instruction = (
-                instruction if instruction is not None else default_instruction
-            )
-            formatted_texts = [
-                f"Instruct: {final_instruction}\nQuery: {text}" for text in texts
-            ]
-        else:
-            formatted_texts = texts
-
-        async with self._semaphore:
-            for attempt in range(self.config.max_retries):
-                try:
-                    request_kwargs = {
-                        "model": self.config.model,
-                        "input": formatted_texts,
-                        "encoding_format": self.config.encoding_format,
-                    }
-
-                    # Only add dimensions parameter if provider is NOT vllm
-                    # vLLM typically doesn't support 'dimensions' param in OpenAI API compatibility layer yet
-                    # We handle vLLM via client-side truncation in _parse_embeddings_response
-                    if self.config.dimensions and self.config.dimensions > 0:
-                        if self.config.provider != VectorizeProvider.VLLM:
-                            request_kwargs["dimensions"] = self.config.dimensions
-
-                    response = await self.client.embeddings.create(**request_kwargs)
-                    return response
-
-                except Exception as e:
-                    logger.error(f"Vectorize API error (attempt {attempt + 1}): {e}")
-                    if attempt < self.config.max_retries - 1:
-                        await asyncio.sleep(2**attempt)
-                        continue
-                    else:
-                        raise VectorizeError(f"API request failed: {e}")
-
+    def get_service(self) -> VectorizeServiceInterface:
+        """
+        Get the primary service (for advanced usage)
+        
+        Returns:
+            VectorizeServiceInterface: The primary service
+            
+        Note: Prefer using proxy methods directly for automatic fallback
+        """
+        return self.primary_service
+    
+    # Implement VectorizeServiceInterface methods with automatic fallback
+    
     async def get_embedding(
         self, text: str, instruction: Optional[str] = None, is_query: bool = False
     ) -> np.ndarray:
-        response = await self._make_request([text], instruction, is_query)
-        if not response.data:
-            raise VectorizeError("Invalid API response: missing data")
-        return np.array(self._parse_embeddings_response(response)[0], dtype=np.float32)
-
+        """Get embedding for a single text with automatic fallback"""
+        return await self.execute_with_fallback(
+            "get_embedding",
+            lambda: self.primary_service.get_embedding(text, instruction, is_query),
+            lambda: self.fallback_service.get_embedding(text, instruction, is_query) if self.fallback_service else None,
+        )
+    
     async def get_embedding_with_usage(
         self, text: str, instruction: Optional[str] = None, is_query: bool = False
     ) -> Tuple[np.ndarray, Optional[UsageInfo]]:
-        response = await self._make_request([text], instruction, is_query)
-        if not response.data:
-            raise VectorizeError("Invalid API response: missing data")
-
-        embeddings = self._parse_embeddings_response(response)
-        embedding = np.array(embeddings[0], dtype=np.float32)
-        usage_info = (
-            UsageInfo.from_openai_usage(response.usage) if response.usage else None
+        """Get embedding with usage information with automatic fallback"""
+        return await self.execute_with_fallback(
+            "get_embedding_with_usage",
+            lambda: self.primary_service.get_embedding_with_usage(text, instruction, is_query),
+            lambda: self.fallback_service.get_embedding_with_usage(text, instruction, is_query) if self.fallback_service else None,
         )
-        return embedding, usage_info
-
+    
     async def get_embeddings(
         self,
         texts: List[str],
         instruction: Optional[str] = None,
         is_query: bool = False,
     ) -> List[np.ndarray]:
-        if not texts:
-            return []
-
-        if len(texts) <= self.config.batch_size:
-            response = await self._make_request(texts, instruction, is_query)
-            return self._parse_embeddings_response(response)
-
-        embeddings = []
-        for i in range(0, len(texts), self.config.batch_size):
-            batch_texts = texts[i : i + self.config.batch_size]
-            response = await self._make_request(batch_texts, instruction, is_query)
-            embeddings.extend(self._parse_embeddings_response(response))
-            if i + self.config.batch_size < len(texts):
-                await asyncio.sleep(0.1)
-        return embeddings
-
-    def _parse_embeddings_response(self, response) -> List[np.ndarray]:
-        if not response.data:
-            raise VectorizeError("Invalid API response: missing data")
-
-        embeddings = []
-        for item in response.data:
-            emb = np.array(item.embedding, dtype=np.float32)
-            # Client-side truncation if configured and necessary
-            if (
-                self.config.dimensions
-                and self.config.dimensions > 0
-                and len(emb) > self.config.dimensions
-            ):
-                emb = emb[: self.config.dimensions]
-                # Optional: Re-normalize if needed. Usually safer to re-normalize after truncation
-                # to maintain unit length for cosine similarity.
-                norm = np.linalg.norm(emb)
-                if norm > 0:
-                    emb = emb / norm
-
-            embeddings.append(emb)
-        return embeddings
-
+        """Get embeddings for multiple texts with automatic fallback"""
+        return await self.execute_with_fallback(
+            "get_embeddings",
+            lambda: self.primary_service.get_embeddings(texts, instruction, is_query),
+            lambda: self.fallback_service.get_embeddings(texts, instruction, is_query) if self.fallback_service else None,
+        )
+    
     async def get_embeddings_batch(
         self,
         text_batches: List[List[str]],
         instruction: Optional[str] = None,
         is_query: bool = False,
     ) -> List[List[np.ndarray]]:
-        tasks = [
-            self.get_embeddings(batch, instruction, is_query) for batch in text_batches
-        ]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-
-        embeddings_batches = []
-        for i, result in enumerate(results):
-            if isinstance(result, Exception):
-                logger.error(f"Error processing batch {i}: {result}")
-                embeddings_batches.append([])
-            else:
-                embeddings_batches.append(result)
-        return embeddings_batches
-
+        """Get embeddings for multiple batches with automatic fallback"""
+        return await self.execute_with_fallback(
+            "get_embeddings_batch",
+            lambda: self.primary_service.get_embeddings_batch(text_batches, instruction, is_query),
+            lambda: self.fallback_service.get_embeddings_batch(text_batches, instruction, is_query) if self.fallback_service else None,
+        )
+    
     def get_model_name(self) -> str:
-        """
-        Get the current model name
+        """Get the current model name (from primary service)"""
+        return self.primary_service.get_model_name()
 
+    async def execute_with_fallback(self, operation_name: str, primary_func, fallback_func):
+        """
+        Execute operation with automatic fallback logic
+        
+        Args:
+            operation_name: Name of the operation for logging
+            primary_func: Function to call on primary service
+            fallback_func: Function to call on fallback service (or None if no fallback)
+            
         Returns:
-            str: Model name
+            Result from primary or fallback service
+            
+        Raises:
+            VectorizeError: If both services fail
         """
-        return self.config.model
+        # Try primary service first
+        try:
+            result = await primary_func()
+            # Reset failure count on success
+            self.config._primary_failure_count = 0
+            return result
 
-    def get_model_info(self) -> Dict[str, Any]:
-        return {
-            "provider": self.config.provider.value,
-            "model": self.config.model,
-            "base_url": self.config.base_url,
-            "timeout": self.config.timeout,
-            "batch_size": self.config.batch_size,
-            "max_concurrent": self.config.max_concurrent_requests,
-            "encoding_format": self.config.encoding_format,
-        }
+        except Exception as primary_error:
+            # Increment failure count
+            self.config._primary_failure_count += 1
+
+            logger.warning(
+                f"Primary service ({self.config.primary_provider}) {operation_name} failed "
+                f"(count: {self.config._primary_failure_count}): {primary_error}"
+            )
+
+            # Check if fallback is enabled
+            if not self.config.enable_fallback or fallback_func is None:
+                logger.error("Fallback disabled or not configured, re-raising error")
+                raise VectorizeError(
+                    f"Primary service failed and fallback is disabled: {primary_error}"
+                )
+
+            # Check if exceeded max failures
+            if self.config._primary_failure_count >= self.config.max_primary_failures:
+                logger.warning(
+                    f"⚠️ Primary service exceeded max failures ({self.config.max_primary_failures}), "
+                    f"using {self.config.fallback_provider} fallback"
+                )
+
+            # Try fallback service
+            try:
+                logger.info(f"🔄 Falling back to {self.config.fallback_provider} for {operation_name}")
+                result = await fallback_func()
+                return result
+
+            except Exception as fallback_error:
+                logger.error(f"❌ Fallback also failed: {fallback_error}")
+                raise VectorizeError(
+                    f"Both primary and fallback services failed. "
+                    f"Primary ({self.config.primary_provider}): {primary_error}, "
+                    f"Fallback ({self.config.fallback_provider}): {fallback_error}"
+                )
+
+    def get_failure_count(self) -> int:
+        """Get current primary service failure count"""
+        return self.config._primary_failure_count
+
+    def reset_failure_count(self):
+        """Reset failure count (useful for health check recovery)"""
+        self.config._primary_failure_count = 0
+        logger.info("Reset primary service failure count to 0")
+
+    async def close(self):
+        """Close all services"""
+        await self.primary_service.close()
+        if self.fallback_service:
+            await self.fallback_service.close()
 
 
+# Global service instance (lazy initialization)
+_service_instance: Optional[HybridVectorizeService] = None
+
+
+def get_hybrid_service() -> HybridVectorizeService:
+    """
+    Get the global hybrid service instance (singleton)
+    
+    Returns:
+        HybridVectorizeService: The global hybrid service instance
+    """
+    global _service_instance
+    if _service_instance is None:
+        _service_instance = HybridVectorizeService()
+    return _service_instance
+
+
+# Main entry point - registered with DI container
+@service(name="vectorize_service", primary=True)
 def get_vectorize_service() -> VectorizeServiceInterface:
-    return get_bean("vectorize_service")
+    """
+    Get the vectorization service (main entry point)
+    
+    Returns the hybrid service which implements VectorizeServiceInterface.
+    All method calls automatically go through fallback logic.
+    
+    Returns:
+        VectorizeServiceInterface: The hybrid service with automatic fallback
+        
+    Example:
+        ```python
+        from agentic_layer.vectorize_service import get_vectorize_service
+        
+        service = get_vectorize_service()  # Returns hybrid service with fallback
+        embedding = await service.get_embedding("Hello world")  # Auto-fallback
+        embeddings = await service.get_embeddings(["Text 1", "Text 2"])  # Auto-fallback
+        await service.close()
+        ```
+    """
+    return get_hybrid_service()  # Return hybrid service (implements VectorizeServiceInterface)
 
 
-# Utility functions
-async def get_text_embedding(
-    text: str, instruction: Optional[str] = None, is_query: bool = False
-) -> np.ndarray:
-    return await get_vectorize_service().get_embedding(text, instruction, is_query)
-
-
-async def get_text_embeddings(
-    texts: List[str], instruction: Optional[str] = None, is_query: bool = False
-) -> List[np.ndarray]:
-    return await get_vectorize_service().get_embeddings(texts, instruction, is_query)
-
-
-async def get_text_embeddings_batch(
-    text_batches: List[List[str]],
-    instruction: Optional[str] = None,
-    is_query: bool = False,
-) -> List[List[np.ndarray]]:
-    return await get_vectorize_service().get_embeddings_batch(
-        text_batches, instruction, is_query
-    )
-
-
-async def get_text_embedding_with_usage(
-    text: str, instruction: Optional[str] = None, is_query: bool = False
-) -> Tuple[np.ndarray, Optional[UsageInfo]]:
-    return await get_vectorize_service().get_embedding_with_usage(
-        text, instruction, is_query
-    )
+# Export public API
+__all__ = [
+    "get_vectorize_service",
+]
