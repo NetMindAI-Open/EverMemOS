@@ -2,7 +2,7 @@
 """
 Tenant context check decorator
 
-Ensures that the API request carries a valid tenant context (X-Organization-Id and X-Space-Id).
+Ensures that the API request carries a valid tenant context.
 """
 
 from functools import wraps
@@ -40,10 +40,7 @@ def require_tenant(func: Callable) -> Callable:
         # Check tenant context
         tenant_id = get_current_tenant_id()
         if not tenant_id:
-            raise HTTPException(
-                status_code=400,
-                detail="Missing tenant context. Please ensure the request includes X-Organization-Id and X-Space-Id",
-            )
+            raise HTTPException(status_code=400, detail="Missing tenant context.")
 
         # Call the original function
         return await func(*args, **kwargs)

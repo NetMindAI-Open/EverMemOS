@@ -1,10 +1,10 @@
 """
-Tenant information provider module
+Tenant information service module
 
-This module defines the tenant information provider interface and its default implementation,
-used to retrieve tenant information based on tenant_id.
+This module defines the tenant information service interface and its default implementation,
+used to retrieve tenant information based on tenant_id (typically single_tenant_id from config).
 
-Uses DI mechanism to manage TenantInfoProvider implementations.
+Uses DI mechanism to manage TenantInfoService implementations.
 """
 
 from abc import ABC, abstractmethod
@@ -14,9 +14,9 @@ from core.tenants.tenant_models import TenantInfo, TenantDetail
 from core.di.decorators import component
 
 
-class TenantInfoProvider(ABC):
+class TenantInfoService(ABC):
     """
-    Tenant information provider interface
+    Tenant information service interface
 
     This interface defines standard methods for retrieving tenant information.
     Different implementations can retrieve tenant information from various data sources (e.g., database, API, configuration files).
@@ -41,10 +41,10 @@ class TenantInfoProvider(ABC):
         raise NotImplementedError
 
 
-@component("default_tenant_info_provider")
-class DefaultTenantInfoProvider(TenantInfoProvider):
+@component("default_tenant_info_service")
+class DefaultTenantInfoService(TenantInfoService):
     """
-    Default tenant information provider implementation
+    Default tenant information service implementation
 
     This implementation provides basic tenant information containing only the tenant_id,
     without detailed information such as storage configurations. Suitable for simple scenarios or as the default implementation.
@@ -67,8 +67,8 @@ class DefaultTenantInfoProvider(TenantInfoProvider):
 
         Examples:
             >>> from core.di.container import get_container
-            >>> provider = get_container().get_bean_by_type(TenantInfoProvider)
-            >>> tenant_info = provider.get_tenant_info("tenant_001")
+            >>> service = get_container().get_bean_by_type(TenantInfoService)
+            >>> tenant_info = service.get_tenant_info("tenant_001")
             >>> print(tenant_info.tenant_id)
             tenant_001
         """

@@ -4,18 +4,13 @@ DeepInfra Rerank Service Implementation
 Reranking service using DeepInfra commercial API.
 """
 
-import os
 import asyncio
 import aiohttp
 import logging
-from typing import List, Dict, Any, Optional, Union
+from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 
-from agentic_layer.rerank_interface import (
-    RerankServiceInterface,
-    RerankError,
-    RerankMemResponse,
-)
+from agentic_layer.rerank_interface import RerankServiceInterface, RerankError
 from api_specs.memory_models import MemoryType
 
 logger = logging.getLogger(__name__)
@@ -44,9 +39,7 @@ class DeepInfraRerankService(RerankServiceInterface):
         self.config = config
         self.session: Optional[aiohttp.ClientSession] = None
         self._semaphore = asyncio.Semaphore(config.max_concurrent_requests)
-        logger.info(
-            f"Initialized DeepInfraRerankService | model={config.model}"
-        )
+        logger.info(f"Initialized DeepInfraRerankService | model={config.model}")
 
     async def _ensure_session(self):
         """Ensure HTTP session is created"""
@@ -79,7 +72,7 @@ class DeepInfraRerankService(RerankServiceInterface):
         formatted_query = f"{prefix}<Instruct>: {instruction}\n<Query>: {query}\n"
         formatted_docs = [f"<Document>: {doc}{suffix}" for doc in documents]
 
-        return [formatted_query] * len(documents), formatted_docs
+        return [formatted_query], formatted_docs
 
     async def _send_rerank_request_batch(
         self,
@@ -205,25 +198,13 @@ class DeepInfraRerankService(RerankServiceInterface):
 
         results = []
         for rank, (original_index, score) in enumerate(indexed_scores):
-            results.append(
-                {"index": original_index, "score": score, "rank": rank}
-            )
+            results.append({"index": original_index, "score": score, "rank": rank})
 
         return {
             "results": results,
             "input_tokens": combined_response.get("input_tokens", 0),
             "request_id": combined_response.get("request_id"),
         }
-
-    def _extract_memory_text(self, memory: Any) -> str:
-        """Extract text from memory object"""
-        if hasattr(memory, 'episode') and memory.episode:
-            return memory.episode
-        elif hasattr(memory, 'summary') and memory.summary:
-            return memory.summary
-        elif hasattr(memory, 'subject') and memory.subject:
-            return memory.subject
-        return str(memory)
 
     def _extract_text_from_hit(self, hit: Dict[str, Any]) -> str:
         """Extract and concatenate text based on memory_type"""
@@ -249,127 +230,45 @@ class DeepInfraRerankService(RerankServiceInterface):
                     return f"Atomic Fact: {atomic_fact}"
 
         # Generic fallback
-        if source.get('episode'): return source['episode']
-        if source.get('atomic_fact'): return source['atomic_fact']
-        if source.get('foresight'): return source['foresight']
-        if source.get('content'): return source['content']
-        if source.get('summary'): return source['summary']
-        if source.get('subject'): return source['subject']
+        if source.get('episode'):
+            return source['episode']
+        if source.get('atomic_fact'):
+            return source['atomic_fact']
+        if source.get('foresight'):
+            return source['foresight']
+        if source.get('content'):
+            return source['content']
+        if source.get('summary'):
+            return source['summary']
+        if source.get('subject'):
+            return source['subject']
         return str(hit)
 
     async def rerank_memories(
-        self, query: str, retrieve_response: Any, instruction: str = None
-    ) -> Union[RerankMemResponse, List[Dict[str, Any]]]:
-        """Rerank memories using DeepInfra API"""
-
-        # 1. Handle List of hits (raw dicts)
-        if isinstance(retrieve_response, list):
-            return await self._rerank_all_hits(query, retrieve_response, instruction=instruction)
-
-        # 2. Handle RetrieveMemResponse object
-        if not hasattr(retrieve_response, 'memories') or not retrieve_response.memories:
-            return RerankMemResponse(memories=[], scores=[])
-
-        all_memories_meta = []
-        all_texts = []
-
-        for group_idx, memory_dict_by_group in enumerate(retrieve_response.memories):
-            for group_id, memory_list in memory_dict_by_group.items():
-                for mem_idx, memory in enumerate(memory_list):
-                    all_memories_meta.append((group_idx, group_id, mem_idx, memory))
-                    all_texts.append(self._extract_memory_text(memory))
-
-        if not all_texts:
-            return RerankMemResponse(
-                memories=retrieve_response.memories,
-                scores=retrieve_response.scores,
-                total_count=getattr(retrieve_response, 'total_count', 0),
-            )
-
-        try:
-            rerank_result = await self._make_rerank_request(
-                query, all_texts, instruction
-            )
-            results_meta = rerank_result.get("results", [])
-
-            group_data_map = {}
-
-            for item in results_meta:
-                original_idx = item["index"]
-                score = item["score"]
-
-                group_idx, group_id, mem_idx, memory = all_memories_meta[original_idx]
-
-                if group_id not in group_data_map:
-                    group_data_map[group_id] = {
-                        "memories": [],
-                        "scores": [],
-                        "rerank_scores": [],
-                        "original_data": [],
-                    }
-
-                orig_score = 0.0
-                if group_idx < len(retrieve_response.scores):
-                    g_scores = retrieve_response.scores[group_idx].get(group_id, [])
-                    if mem_idx < len(g_scores):
-                        orig_score = g_scores[mem_idx]
-
-                orig_data = {}
-                if hasattr(retrieve_response, 'original_data') and group_idx < len(
-                    retrieve_response.original_data
-                ):
-                    g_data = retrieve_response.original_data[group_idx].get(
-                        group_id, []
-                    )
-                    if mem_idx < len(g_data):
-                        orig_data = g_data[mem_idx]
-
-                group_data_map[group_id]["memories"].append(memory)
-                group_data_map[group_id]["scores"].append(orig_score)
-                group_data_map[group_id]["rerank_scores"].append(score)
-                group_data_map[group_id]["original_data"].append(orig_data)
-
-            final_memories = [{gid: d["memories"] for gid, d in group_data_map.items()}]
-            final_scores = [{gid: d["scores"] for gid, d in group_data_map.items()}]
-            final_rerank_scores = [
-                {gid: d["rerank_scores"] for gid, d in group_data_map.items()}
-            ]
-            final_original_data = [
-                {gid: d["original_data"] for gid, d in group_data_map.items()}
-            ]
-
-            return RerankMemResponse(
-                memories=final_memories,
-                scores=final_scores,
-                rerank_scores=final_rerank_scores,
-                original_data=final_original_data,
-                total_count=len(all_texts),
-                has_more=getattr(retrieve_response, 'has_more', False),
-                metadata=getattr(retrieve_response, 'metadata', {}),
-            )
-
-        except Exception as e:
-            logger.error(f"Rerank object failed: {e}")
-            return RerankMemResponse(
-                memories=retrieve_response.memories,
-                scores=retrieve_response.scores,
-                total_count=getattr(retrieve_response, 'total_count', 0),
-            )
-
-    async def _rerank_all_hits(
         self,
         query: str,
-        all_hits: List[Dict[str, Any]],
-        top_k: int = None,
-        instruction: str = None,
+        hits: List[Dict[str, Any]],
+        top_k: Optional[int] = None,
+        instruction: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        """Rerank the all_hits list and return top_k results"""
-        if not all_hits:
+        """
+        Rerank memories using DeepInfra API
+
+        Args:
+            query: Query text
+            hits: List of memory hits to rerank
+            top_k: Return top K results (optional)
+            instruction: Optional reranking instruction
+
+        Returns:
+            List of reranked memory hits, sorted by relevance score
+        """
+        if not hits:
             return []
 
-        # Extract text content from all_hits for reranking
+        # Extract text content from hits for reranking
         all_texts = []
-        for hit in all_hits:
+        for hit in hits:
             text = self._extract_text_from_hit(hit)
             all_texts.append(text)
 
@@ -396,8 +295,8 @@ class DeepInfraRerankService(RerankServiceInterface):
             for item in results_meta:
                 original_idx = item.get("index", 0)
                 score = item.get("score", 0.0)
-                if 0 <= original_idx < len(all_hits):
-                    hit = all_hits[original_idx].copy()
+                if 0 <= original_idx < len(hits):
+                    hit = hits[original_idx].copy()
                     hit['score'] = score  # Unified score field
                     reranked_hits.append(hit)
 
@@ -408,19 +307,21 @@ class DeepInfraRerankService(RerankServiceInterface):
             # Print top 3 result scores for debugging
             if reranked_hits:
                 top_scores = [f"{h.get('score', 0):.4f}" for h in reranked_hits[:3]]
-                logger.info(f"Reranking completed: {len(reranked_hits)} results, top scores: {top_scores}")
+                logger.info(
+                    f"Reranking completed: {len(reranked_hits)} results, top scores: {top_scores}"
+                )
             return reranked_hits
 
         except Exception as e:
-            logger.error(f"Error during reranking all_hits: {e}")
+            logger.error(f"Error during reranking: {e}")
             # If reranking fails, return original results (sorted by original score)
-            sorted_hits = sorted(
-                all_hits, key=lambda x: x.get('score', 0), reverse=True
-            )
+            sorted_hits = sorted(hits, key=lambda x: x.get('score', 0), reverse=True)
             if top_k is not None and top_k > 0:
                 sorted_hits = sorted_hits[:top_k]
             return sorted_hits
 
+
     def get_model_name(self) -> str:
         """Get the current model name"""
         return self.config.model
+

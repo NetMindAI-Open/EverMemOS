@@ -129,22 +129,36 @@ async def test_rerank_service():
     print(f"\n🧪 Testing with query and {len(documents)} documents...")
     print(f"   Query: '{query}'")
     
+    # Prepare hits for rerank_memories method
+    hits = []
+    for idx, doc in enumerate(documents):
+        hit = {
+            "id": f"doc_{idx}",
+            "_source": {"episode": doc},
+            "memory_type": "episodic_memory",
+            "score": 1.0
+        }
+        hits.append(hit)
+    
     try:
-        # Test document reranking
-        print("\n1️⃣ Testing document reranking...")
-        reranked_docs = await rerank_service.rerank_documents(query, documents)
+        # Test memory reranking using rerank_memories
+        print("\n1️⃣ Testing memory reranking (using rerank_memories)...")
+        reranked_hits = await rerank_service.rerank_memories(query, hits)
         
-        print(f"   ✅ Reranked {len(reranked_docs)} documents")
+        print(f"   ✅ Reranked {len(reranked_hits)} memories")
         print(f"\n   📊 Reranking results (sorted by relevance):")
-        for i, doc in enumerate(reranked_docs[:5]):  # Show top 5
-            doc_text = doc['document'][:80] + "..." if len(doc['document']) > 80 else doc['document']
-            print(f"   {i+1}. Score: {doc['relevance_score']:.4f}")
-            print(f"      Text: {doc_text}")
+        for i, hit in enumerate(reranked_hits[:5]):  # Show top 5
+            doc_text = hit.get('_source', {}).get('episode', '')
+            doc_preview = doc_text[:80] + "..." if len(doc_text) > 80 else doc_text
+            score = hit.get('score', 0.0)
+            print(f"   {i+1}. Score: {score:.4f}")
+            print(f"      Text: {doc_preview}")
             print()
         
         # Verify ranking
         print("2️⃣ Verifying ranking quality...")
-        top_doc = reranked_docs[0]['document']
+        top_hit = reranked_hits[0]
+        top_doc = top_hit.get('_source', {}).get('episode', '')
         if "machine learning" in top_doc.lower():
             print("   ✅ Top result contains 'machine learning' - ranking is good!")
         else:
@@ -153,10 +167,11 @@ async def test_rerank_service():
         
         # Test with top_k
         print("\n3️⃣ Testing with top_k=3...")
-        top_3 = await rerank_service.rerank_documents(query, documents, top_k=3)
-        print(f"   ✅ Retrieved top {len(top_3)} documents")
-        for i, doc in enumerate(top_3):
-            print(f"   {i+1}. Score: {doc['relevance_score']:.4f}")
+        top_3_hits = await rerank_service.rerank_memories(query, hits, top_k=3)
+        print(f"   ✅ Retrieved top {len(top_3_hits)} memories")
+        for i, hit in enumerate(top_3_hits):
+            score = hit.get('score', 0.0)
+            print(f"   {i+1}. Score: {score:.4f}")
         
         print("\n✅ Rerank service test PASSED")
         return True
@@ -216,18 +231,34 @@ async def test_retrieval_pipeline():
             doc_preview = documents[idx][:60] + "..."
             print(f"   {rank+1}. Doc {idx+1}: {score:.4f} - {doc_preview}")
         
-        # Step 3: Rerank
-        print("\n📍 Step 3: Rerank with reranker...")
-        reranked = await rerank_service.rerank_documents(query, documents, top_k=3)
+        # Step 3: Prepare hits and rerank using rerank_memories
+        print("\n📍 Step 3: Rerank with reranker (using rerank_memories)...")
+        
+        # Prepare hits from documents with embedding scores
+        hits = []
+        for idx, score in scores:
+            hit = {
+                "id": f"doc_{idx}",
+                "_source": {"episode": documents[idx]},
+                "memory_type": "episodic_memory",
+                "score": float(score)  # Use embedding similarity as initial score
+            }
+            hits.append(hit)
+        
+        # Rerank using rerank_memories
+        reranked_hits = await rerank_service.rerank_memories(query, hits, top_k=3)
+        
         print("   📊 Final ranking (after reranking):")
-        for rank, doc in enumerate(reranked):
-            doc_preview = doc['document'][:60] + "..."
-            print(f"   {rank+1}. Score: {doc['relevance_score']:.4f} - {doc_preview}")
+        for rank, hit in enumerate(reranked_hits):
+            doc_text = hit.get('_source', {}).get('episode', '')
+            doc_preview = doc_text[:60] + "..."
+            score = hit.get('score', 0.0)
+            print(f"   {rank+1}. Score: {score:.4f} - {doc_preview}")
         
         # Compare rankings
         print("\n📍 Step 4: Compare rankings...")
         initial_top_idx = scores[0][0]
-        reranked_top_text = reranked[0]['document']
+        reranked_top_text = reranked_hits[0].get('_source', {}).get('episode', '')
         
         if documents[initial_top_idx] == reranked_top_text:
             print("   ✅ Rankings agree - top result is the same")
@@ -293,25 +324,35 @@ async def test_compare_vllm_deepinfra_rerank():
         print(f"   DeepInfra: {deepinfra_config.base_url}")
         print(f"   Model:     {vllm_config.model}")
         
-        # Test vLLM
-        print("\n1️⃣ Testing vLLM reranking...")
-        vllm_results = await vllm_service.rerank_documents(query, documents)
+        # Prepare hits for rerank_memories method
+        # Format: List[Dict] with _source and memory_type
+        hits = []
+        for idx, doc in enumerate(documents):
+            hit = {
+                "id": f"test_doc_{idx}",
+                "_source": {"episode": doc},
+                "memory_type": "episodic_memory",
+                "score": 1.0  # Initial score
+            }
+            hits.append(hit)
+        
+        # Test vLLM using rerank_memories
+        print("\n1️⃣ Testing vLLM reranking (using rerank_memories)...")
+        vllm_results = await vllm_service.rerank_memories(query, hits)
         print(f"   ✅ vLLM returned {len(vllm_results)} results")
         
-        # Test DeepInfra
-        print("\n2️⃣ Testing DeepInfra reranking...")
-        deepinfra_results = await deepinfra_service._rerank_all_hits(
-            query,
-            [{"_source": {"episode": doc}, "memory_type": "episodic_memory"} for doc in documents]
-        )
+        # Test DeepInfra using rerank_memories
+        print("\n2️⃣ Testing DeepInfra reranking (using rerank_memories)...")
+        deepinfra_results = await deepinfra_service.rerank_memories(query, hits)
         print(f"   ✅ DeepInfra returned {len(deepinfra_results)} results")
         
         # Compare results
         print("\n3️⃣ Comparing results...")
         print("\n   📊 vLLM Rankings:")
-        for i, doc in enumerate(vllm_results[:5]):
-            doc_text = doc['document'][:60] + "..."
-            print(f"   {i+1}. Score: {doc['relevance_score']:.4f} | {doc_text}")
+        for i, hit in enumerate(vllm_results[:5]):
+            doc_text = hit.get('_source', {}).get('episode', '')[:60] + "..."
+            score = hit.get('score', 0.0)
+            print(f"   {i+1}. Score: {score:.4f} | {doc_text}")
         
         print("\n   📊 DeepInfra Rankings:")
         for i, hit in enumerate(deepinfra_results[:5]):
@@ -323,7 +364,7 @@ async def test_compare_vllm_deepinfra_rerank():
         print("\n4️⃣ Analyzing ranking consistency...")
         
         # Get top document from each service
-        vllm_top_doc = vllm_results[0]['document']
+        vllm_top_doc = vllm_results[0].get('_source', {}).get('episode', '')
         deepinfra_top_doc = deepinfra_results[0].get('_source', {}).get('episode', '')
         
         if vllm_top_doc == deepinfra_top_doc:
@@ -335,7 +376,7 @@ async def test_compare_vllm_deepinfra_rerank():
         # Calculate score correlation for top 3
         print("\n   📈 Score comparison (Top 3):")
         for i in range(min(3, len(vllm_results), len(deepinfra_results))):
-            vllm_score = vllm_results[i]['relevance_score']
+            vllm_score = vllm_results[i].get('score', 0.0)
             deepinfra_score = deepinfra_results[i].get('score', 0.0)
             diff = abs(vllm_score - deepinfra_score)
             print(f"   Doc {i+1}: vLLM={vllm_score:.4f}, DeepInfra={deepinfra_score:.4f}, diff={diff:.4f}")
@@ -343,11 +384,18 @@ async def test_compare_vllm_deepinfra_rerank():
         # Check if rankings are similar (allowing for small variations)
         print("\n5️⃣ Ranking similarity analysis...")
         
-        # Extract document indices from results
-        vllm_indices = [documents.index(doc['document']) for doc in vllm_results]
+        # Extract document texts from results
+        vllm_docs = [hit.get('_source', {}).get('episode', '') for hit in vllm_results]
+        deepinfra_docs = [hit.get('_source', {}).get('episode', '') for hit in deepinfra_results]
+        
+        # Find indices in original documents list
+        vllm_indices = []
+        for doc_text in vllm_docs:
+            if doc_text in documents:
+                vllm_indices.append(documents.index(doc_text))
+        
         deepinfra_indices = []
-        for hit in deepinfra_results:
-            doc_text = hit.get('_source', {}).get('episode', '')
+        for doc_text in deepinfra_docs:
             if doc_text in documents:
                 deepinfra_indices.append(documents.index(doc_text))
         
@@ -378,6 +426,487 @@ async def test_compare_vllm_deepinfra_rerank():
         await deepinfra_service.close()
 
 
+async def test_compare_vllm_deepinfra_embedding():
+    """Compare vLLM and DeepInfra embedding results for multiple queries"""
+    print("\n" + "=" * 80)
+    print("🔹 Comparing vLLM vs DeepInfra Embedding Results")
+    print("=" * 80)
+    
+    # Import service classes directly
+    from agentic_layer.vectorize_vllm import VllmVectorizeService, VllmVectorizeConfig
+    from agentic_layer.vectorize_deepinfra import DeepInfraVectorizeService, DeepInfraVectorizeConfig
+    import numpy as np
+    
+    # Test queries (at least 5 diverse queries)
+    test_queries = [
+        "What is machine learning and how does it work?",
+        "Explain the concept of deep learning neural networks",
+        "How to build a web application using Python",
+        "What are the benefits of cloud computing?",
+        "Describe the process of natural language processing",
+        "How does blockchain technology ensure security?",
+        "What is the difference between AI and machine learning?",
+    ]
+    
+    print(f"\n🧪 Testing with {len(test_queries)} diverse queries...")
+    
+    try:
+        # Create vLLM service
+        vllm_config = VllmVectorizeConfig(
+            api_key=os.getenv("VECTORIZE_API_KEY", "EMPTY"),
+            base_url=os.getenv("VECTORIZE_BASE_URL", "http://localhost:8000/v1"),
+            model=os.getenv("VECTORIZE_MODEL", "Qwen/Qwen3-Embedding-4B"),
+            dimensions=int(os.getenv("VECTORIZE_DIMENSIONS", "1024")),
+        )
+        vllm_service = VllmVectorizeService(vllm_config)
+        
+        # Create DeepInfra service
+        deepinfra_config = DeepInfraVectorizeConfig(
+            api_key=os.getenv("VECTORIZE_FALLBACK_API_KEY", ""),
+            base_url=os.getenv("VECTORIZE_FALLBACK_BASE_URL", "https://api.deepinfra.com/v1/openai"),
+            model=os.getenv("VECTORIZE_MODEL", "Qwen/Qwen3-Embedding-4B"),
+            dimensions=int(os.getenv("VECTORIZE_DIMENSIONS", "1024")),
+        )
+        deepinfra_service = DeepInfraVectorizeService(deepinfra_config)
+        
+        print(f"\n📋 Service Configuration:")
+        print(f"   vLLM:      {vllm_config.base_url}")
+        print(f"   DeepInfra: {deepinfra_config.base_url}")
+        print(f"   Model:     {vllm_config.model}")
+        print(f"   Dimensions: {vllm_config.dimensions}")
+        
+        # Test each query
+        print("\n1️⃣ Generating embeddings for all queries...")
+        
+        vllm_embeddings = []
+        deepinfra_embeddings = []
+        
+        for i, query in enumerate(test_queries):
+            # Get vLLM embedding
+            vllm_emb = await vllm_service.get_embedding(query, is_query=True)
+            vllm_embeddings.append(vllm_emb)
+            
+            # Get DeepInfra embedding
+            deepinfra_emb = await deepinfra_service.get_embedding(query, is_query=True)
+            deepinfra_embeddings.append(deepinfra_emb)
+            
+            print(f"   Query {i+1}: ✅ vLLM dim={vllm_emb.shape[0]}, DeepInfra dim={deepinfra_emb.shape[0]}")
+        
+        # Compare embeddings
+        print("\n2️⃣ Comparing embedding properties...")
+        
+        # Check dimensions
+        print("\n   📏 Dimension Check:")
+        all_same_dim = all(
+            vllm_emb.shape[0] == deepinfra_emb.shape[0] 
+            for vllm_emb, deepinfra_emb in zip(vllm_embeddings, deepinfra_embeddings)
+        )
+        if all_same_dim:
+            print(f"   ✅ All embeddings have the same dimension: {vllm_embeddings[0].shape[0]}")
+        else:
+            print(f"   ⚠️  Dimension mismatch detected!")
+        
+        # Compare norms
+        print("\n   📊 Norm Comparison:")
+        for i, (vllm_emb, deepinfra_emb) in enumerate(zip(vllm_embeddings, deepinfra_embeddings)):
+            vllm_norm = np.linalg.norm(vllm_emb)
+            deepinfra_norm = np.linalg.norm(deepinfra_emb)
+            print(f"   Query {i+1}: vLLM={vllm_norm:.4f}, DeepInfra={deepinfra_norm:.4f}")
+        
+        # Calculate cosine similarity between same queries from different services
+        print("\n3️⃣ Cross-service similarity analysis...")
+        print("\n   🔄 Cosine Similarity (vLLM vs DeepInfra for same query):")
+        
+        similarities = []
+        for i, (vllm_emb, deepinfra_emb) in enumerate(zip(vllm_embeddings, deepinfra_embeddings)):
+            # Cosine similarity
+            similarity = np.dot(vllm_emb, deepinfra_emb) / (
+                np.linalg.norm(vllm_emb) * np.linalg.norm(deepinfra_emb)
+            )
+            similarities.append(similarity)
+            query_preview = test_queries[i][:50] + "..." if len(test_queries[i]) > 50 else test_queries[i]
+            print(f"   Query {i+1}: {similarity:.4f} | {query_preview}")
+        
+        avg_similarity = np.mean(similarities)
+        min_similarity = np.min(similarities)
+        max_similarity = np.max(similarities)
+        
+        print(f"\n   📈 Statistics:")
+        print(f"      Average similarity: {avg_similarity:.4f}")
+        print(f"      Min similarity:     {min_similarity:.4f}")
+        print(f"      Max similarity:     {max_similarity:.4f}")
+        
+        # Analyze element-wise differences
+        print("\n4️⃣ Element-wise difference analysis...")
+        
+        total_diffs = []
+        for i, (vllm_emb, deepinfra_emb) in enumerate(zip(vllm_embeddings, deepinfra_embeddings)):
+            diff = np.abs(vllm_emb - deepinfra_emb)
+            mean_diff = np.mean(diff)
+            max_diff = np.max(diff)
+            total_diffs.append(mean_diff)
+            
+            if i < 3:  # Show details for first 3 queries
+                print(f"   Query {i+1}: mean_diff={mean_diff:.6f}, max_diff={max_diff:.6f}")
+        
+        avg_element_diff = np.mean(total_diffs)
+        print(f"\n   Average element-wise difference: {avg_element_diff:.6f}")
+        
+        # Test embedding consistency within each service
+        print("\n5️⃣ Consistency check (same query, multiple calls)...")
+        
+        test_query = test_queries[0]
+        print(f"   Testing query: '{test_query[:60]}...'")
+        
+        # Get 3 embeddings from vLLM for the same query
+        vllm_consistency = []
+        for _ in range(3):
+            emb = await vllm_service.get_embedding(test_query, is_query=True)
+            vllm_consistency.append(emb)
+        
+        # Calculate pairwise similarities
+        vllm_sim_1_2 = np.dot(vllm_consistency[0], vllm_consistency[1]) / (
+            np.linalg.norm(vllm_consistency[0]) * np.linalg.norm(vllm_consistency[1])
+        )
+        vllm_sim_1_3 = np.dot(vllm_consistency[0], vllm_consistency[2]) / (
+            np.linalg.norm(vllm_consistency[0]) * np.linalg.norm(vllm_consistency[2])
+        )
+        
+        print(f"   vLLM consistency (call 1 vs 2): {vllm_sim_1_2:.6f}")
+        print(f"   vLLM consistency (call 1 vs 3): {vllm_sim_1_3:.6f}")
+        
+        if vllm_sim_1_2 > 0.9999 and vllm_sim_1_3 > 0.9999:
+            print(f"   ✅ vLLM produces highly consistent embeddings")
+        else:
+            print(f"   ⚠️  vLLM shows some variability")
+        
+        # Summary and conclusion
+        print("\n6️⃣ Summary and Conclusion...")
+        
+        if avg_similarity > 0.99:
+            print(f"   ✅ Embeddings are HIGHLY SIMILAR (avg={avg_similarity:.4f})")
+            print(f"      Services are likely using the same model checkpoint")
+        elif avg_similarity > 0.95:
+            print(f"   ✅ Embeddings are VERY SIMILAR (avg={avg_similarity:.4f})")
+            print(f"      Small differences likely due to implementation details")
+        elif avg_similarity > 0.90:
+            print(f"   ⚠️  Embeddings are MODERATELY SIMILAR (avg={avg_similarity:.4f})")
+            print(f"      May indicate different model versions or post-processing")
+        else:
+            print(f"   ⚠️  Embeddings show SIGNIFICANT DIFFERENCES (avg={avg_similarity:.4f})")
+            print(f"      Likely different model versions or configurations")
+        
+        print(f"\n   💡 Recommendation:")
+        if avg_similarity > 0.95:
+            print(f"      Safe to use either service for retrieval")
+            print(f"      Fallback between services should work well")
+        else:
+            print(f"      Consider using a single service for consistency")
+            print(f"      Fallback may produce different retrieval results")
+        
+        print("\n✅ Embedding comparison test PASSED")
+        return True
+        
+    except Exception as e:
+        print(f"\n❌ Embedding comparison test FAILED: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+    finally:
+        await vllm_service.close()
+        await deepinfra_service.close()
+
+
+async def test_detailed_rerank_comparison():
+    """Detailed comparison of vLLM vs DeepInfra rerank across multiple test cases"""
+    print("\n" + "=" * 80)
+    print("🔹 Detailed Rerank Comparison: Multiple Test Cases")
+    print("=" * 80)
+    
+    # Import service classes
+    from agentic_layer.rerank_vllm import VllmRerankService, VllmRerankConfig
+    from agentic_layer.rerank_deepinfra import DeepInfraRerankService, DeepInfraRerankConfig
+    import numpy as np
+    
+    # Define multiple test cases across different domains
+    test_cases = [
+        {
+            "name": "Technology - Machine Learning",
+            "query": "What is machine learning and how does it work?",
+            "documents": [
+                "Machine learning is a subset of AI that enables computers to learn from data without explicit programming. It uses algorithms to identify patterns.",
+                "Python is a programming language widely used in web development and data analysis.",
+                "Deep learning is a subset of machine learning using neural networks with multiple layers.",
+                "Cloud computing provides on-demand access to computing resources over the internet.",
+                "Neural networks are computational models inspired by the human brain structure.",
+            ]
+        },
+        {
+            "name": "Healthcare - Diabetes",
+            "query": "What are the symptoms and treatment of type 2 diabetes?",
+            "documents": [
+                "Type 2 diabetes symptoms include increased thirst, frequent urination, and unexplained weight loss. Treatment involves medication, diet, and exercise.",
+                "Regular exercise helps maintain cardiovascular health and reduces stress levels.",
+                "Type 1 diabetes is an autoimmune condition where the pancreas produces little or no insulin.",
+                "A balanced diet rich in vegetables and whole grains promotes overall health.",
+                "Diabetes complications can include heart disease, kidney damage, and vision problems if left untreated.",
+            ]
+        },
+        {
+            "name": "Finance - Stock Market",
+            "query": "How does the stock market work and what factors affect stock prices?",
+            "documents": [
+                "Stock markets facilitate buying and selling of company shares. Prices are affected by supply, demand, company performance, and economic indicators.",
+                "Cryptocurrency trading has grown popular with blockchain technology enabling decentralized transactions.",
+                "Interest rates set by central banks influence borrowing costs and investment decisions.",
+                "Real estate investment can provide steady income through rental properties.",
+                "Stock market volatility increases during economic uncertainty, causing price fluctuations.",
+            ]
+        },
+        {
+            "name": "Climate - Global Warming",
+            "query": "What causes global warming and what are its effects?",
+            "documents": [
+                "Global warming is caused by greenhouse gas emissions from burning fossil fuels. Effects include rising temperatures, melting ice caps, and extreme weather.",
+                "Renewable energy sources like solar and wind power reduce carbon emissions.",
+                "Ocean acidification occurs when seawater absorbs excess carbon dioxide from the atmosphere.",
+                "Deforestation reduces the planet's capacity to absorb CO2, contributing to climate change.",
+                "Electric vehicles produce zero direct emissions and help reduce air pollution.",
+            ]
+        },
+        {
+            "name": "Programming - Web Development",
+            "query": "What are the best practices for building modern web applications?",
+            "documents": [
+                "Modern web development uses frameworks like React, Vue, or Angular. Best practices include responsive design, performance optimization, and security.",
+                "Mobile app development requires knowledge of iOS and Android platforms.",
+                "Database optimization improves query performance and reduces server load.",
+                "Web applications should implement proper authentication, input validation, and secure data transmission.",
+                "Version control systems like Git help teams collaborate on code efficiently.",
+            ]
+        },
+        {
+            "name": "History - World War II",
+            "query": "What were the main causes and consequences of World War II?",
+            "documents": [
+                "World War II was caused by factors including the Treaty of Versailles, economic depression, and rise of totalitarian regimes. Consequences included millions of deaths and geopolitical changes.",
+                "The Cold War was a period of geopolitical tension between the Soviet Union and the United States.",
+                "The Industrial Revolution transformed economies from agriculture-based to manufacturing-focused.",
+                "World War II ended with the atomic bombings of Hiroshima and Nagasaki, leading to Japan's surrender.",
+                "The United Nations was established after WWII to promote international cooperation and prevent future conflicts.",
+            ]
+        },
+        {
+            "name": "Nutrition - Healthy Diet",
+            "query": "What constitutes a healthy balanced diet?",
+            "documents": [
+                "A balanced diet includes fruits, vegetables, whole grains, lean proteins, and healthy fats. It provides essential nutrients for optimal health.",
+                "Regular physical activity combined with proper nutrition helps maintain healthy body weight.",
+                "Processed foods high in sugar and saturated fats should be limited in a healthy diet.",
+                "Hydration is important; adults should drink 6-8 glasses of water daily.",
+                "Vitamins and minerals from diverse food sources support immune function and overall wellbeing.",
+            ]
+        },
+    ]
+    
+    print(f"\n🧪 Testing {len(test_cases)} different scenarios...")
+    
+    try:
+        # Create services
+        vllm_config = VllmRerankConfig(
+            api_key=os.getenv("RERANK_API_KEY", "EMPTY"),
+            base_url=os.getenv("RERANK_BASE_URL", "http://localhost:12000/v1/rerank"),
+            model=os.getenv("RERANK_MODEL", "Qwen/Qwen3-Reranker-4B"),
+        )
+        vllm_service = VllmRerankService(vllm_config)
+        
+        deepinfra_config = DeepInfraRerankConfig(
+            api_key=os.getenv("RERANK_FALLBACK_API_KEY", ""),
+            base_url=os.getenv("RERANK_FALLBACK_BASE_URL", "https://api.deepinfra.com/v1/inference"),
+            model=os.getenv("RERANK_MODEL", "Qwen/Qwen3-Reranker-4B"),
+        )
+        deepinfra_service = DeepInfraRerankService(deepinfra_config)
+        
+        print(f"\n📋 Services:")
+        print(f"   vLLM:      {vllm_config.base_url}")
+        print(f"   DeepInfra: {deepinfra_config.base_url}")
+        
+        # Store results for analysis
+        all_results = []
+        
+        # Test each case
+        for case_idx, test_case in enumerate(test_cases):
+            print(f"\n{'='*80}")
+            print(f"Test Case {case_idx + 1}: {test_case['name']}")
+            print(f"{'='*80}")
+            print(f"Query: {test_case['query']}")
+            print(f"Documents: {len(test_case['documents'])}")
+            
+            # Prepare hits
+            hits = []
+            for doc_idx, doc in enumerate(test_case['documents']):
+                hit = {
+                    "id": f"case{case_idx}_doc{doc_idx}",
+                    "_source": {"episode": doc},
+                    "memory_type": "episodic_memory",
+                    "score": 1.0
+                }
+                hits.append(hit)
+            
+            # Get rerank results from both services
+            print(f"\n⏳ Reranking with vLLM...")
+            vllm_results = await vllm_service.rerank_memories(test_case['query'], hits.copy())
+            
+            print(f"⏳ Reranking with DeepInfra...")
+            deepinfra_results = await deepinfra_service.rerank_memories(test_case['query'], hits.copy())
+            
+            # Extract rankings and scores
+            vllm_docs = [hit.get('_source', {}).get('episode', '') for hit in vllm_results]
+            vllm_scores = [hit.get('score', 0.0) for hit in vllm_results]
+            
+            deepinfra_docs = [hit.get('_source', {}).get('episode', '') for hit in deepinfra_results]
+            deepinfra_scores = [hit.get('score', 0.0) for hit in deepinfra_results]
+            
+            # Map back to original indices
+            vllm_order = [test_case['documents'].index(doc) for doc in vllm_docs if doc in test_case['documents']]
+            deepinfra_order = [test_case['documents'].index(doc) for doc in deepinfra_docs if doc in test_case['documents']]
+            
+            # Print results
+            print(f"\n📊 vLLM Rankings:")
+            for i, (doc, score) in enumerate(zip(vllm_docs, vllm_scores)):
+                doc_preview = doc[:70] + "..." if len(doc) > 70 else doc
+                orig_idx = test_case['documents'].index(doc) if doc in test_case['documents'] else -1
+                print(f"   {i+1}. [Doc {orig_idx}] Score: {score:.4f} | {doc_preview}")
+            
+            print(f"\n📊 DeepInfra Rankings:")
+            for i, (doc, score) in enumerate(zip(deepinfra_docs, deepinfra_scores)):
+                doc_preview = doc[:70] + "..." if len(doc) > 70 else doc
+                orig_idx = test_case['documents'].index(doc) if doc in test_case['documents'] else -1
+                print(f"   {i+1}. [Doc {orig_idx}] Score: {score:.4f} | {doc_preview}")
+            
+            # Calculate metrics
+            print(f"\n📈 Analysis:")
+            
+            # 1. Score comparison
+            print(f"\n   Score Comparison:")
+            score_diffs = []
+            for i in range(min(len(vllm_scores), len(deepinfra_scores))):
+                diff = abs(vllm_scores[i] - deepinfra_scores[i])
+                score_diffs.append(diff)
+                print(f"   Position {i+1}: vLLM={vllm_scores[i]:.4f}, DeepInfra={deepinfra_scores[i]:.4f}, diff={diff:.4f}")
+            
+            avg_score_diff = np.mean(score_diffs) if score_diffs else 0
+            max_score_diff = np.max(score_diffs) if score_diffs else 0
+            print(f"   Avg score difference: {avg_score_diff:.4f}")
+            print(f"   Max score difference: {max_score_diff:.4f}")
+            
+            # 2. Ranking consistency
+            print(f"\n   Ranking Consistency:")
+            print(f"   vLLM order:      {vllm_order}")
+            print(f"   DeepInfra order: {deepinfra_order}")
+            
+            # Top-1 match
+            top1_match = vllm_order[0] == deepinfra_order[0] if vllm_order and deepinfra_order else False
+            print(f"   Top-1 match: {'✅ YES' if top1_match else '❌ NO'}")
+            
+            # Top-3 overlap
+            vllm_top3 = set(vllm_order[:3])
+            deepinfra_top3 = set(deepinfra_order[:3])
+            top3_overlap = len(vllm_top3.intersection(deepinfra_top3))
+            print(f"   Top-3 overlap: {top3_overlap}/3 documents")
+            
+            # Kendall's Tau (rank correlation)
+            from scipy.stats import kendalltau
+            if len(vllm_order) == len(deepinfra_order):
+                tau, p_value = kendalltau(vllm_order, deepinfra_order)
+                print(f"   Kendall's Tau: {tau:.4f} (p={p_value:.4f})")
+            
+            # Spearman's correlation on scores
+            from scipy.stats import spearmanr
+            if len(vllm_scores) >= 2 and len(deepinfra_scores) >= 2:
+                # Create score mapping for original documents
+                vllm_score_map = {test_case['documents'].index(doc): score 
+                                 for doc, score in zip(vllm_docs, vllm_scores) 
+                                 if doc in test_case['documents']}
+                deepinfra_score_map = {test_case['documents'].index(doc): score 
+                                      for doc, score in zip(deepinfra_docs, deepinfra_scores) 
+                                      if doc in test_case['documents']}
+                
+                # Get scores in original document order
+                vllm_scores_ordered = [vllm_score_map.get(i, 0) for i in range(len(test_case['documents']))]
+                deepinfra_scores_ordered = [deepinfra_score_map.get(i, 0) for i in range(len(test_case['documents']))]
+                
+                rho, p_value = spearmanr(vllm_scores_ordered, deepinfra_scores_ordered)
+                print(f"   Spearman's ρ: {rho:.4f} (p={p_value:.4f})")
+            
+            # Store results
+            all_results.append({
+                "name": test_case['name'],
+                "top1_match": top1_match,
+                "top3_overlap": top3_overlap,
+                "avg_score_diff": avg_score_diff,
+                "max_score_diff": max_score_diff,
+                "vllm_order": vllm_order,
+                "deepinfra_order": deepinfra_order,
+                "vllm_scores": vllm_scores,
+                "deepinfra_scores": deepinfra_scores,
+            })
+        
+        # Overall summary
+        print(f"\n{'='*80}")
+        print(f"📊 Overall Summary Across All Test Cases")
+        print(f"{'='*80}")
+        
+        top1_matches = sum(1 for r in all_results if r['top1_match'])
+        avg_top3_overlap = np.mean([r['top3_overlap'] for r in all_results])
+        avg_score_diff_all = np.mean([r['avg_score_diff'] for r in all_results])
+        max_score_diff_all = np.max([r['max_score_diff'] for r in all_results])
+        
+        print(f"\n🎯 Ranking Consistency:")
+        print(f"   Top-1 matches:        {top1_matches}/{len(test_cases)} ({top1_matches/len(test_cases)*100:.1f}%)")
+        print(f"   Avg Top-3 overlap:    {avg_top3_overlap:.2f}/3 ({avg_top3_overlap/3*100:.1f}%)")
+        
+        print(f"\n📊 Score Differences:")
+        print(f"   Average score diff:   {avg_score_diff_all:.4f}")
+        print(f"   Maximum score diff:   {max_score_diff_all:.4f}")
+        
+        print(f"\n💡 Interpretation:")
+        if top1_matches >= len(test_cases) * 0.8:
+            print(f"   ✅ EXCELLENT: Services agree on top result in most cases")
+        elif top1_matches >= len(test_cases) * 0.6:
+            print(f"   ✅ GOOD: Services show reasonable consistency")
+        else:
+            print(f"   ⚠️  MODERATE: Significant ranking differences between services")
+        
+        if avg_score_diff_all < 0.1:
+            print(f"   ✅ Score differences are minimal")
+        elif avg_score_diff_all < 0.2:
+            print(f"   ⚠️  Score differences are moderate")
+        else:
+            print(f"   ⚠️  Score differences are significant")
+        
+        # Case-by-case summary table
+        print(f"\n📋 Summary Table:")
+        print(f"   {'Case':<35} {'Top-1':<8} {'Top-3':<8} {'Avg Diff':<10}")
+        print(f"   {'-'*35} {'-'*8} {'-'*8} {'-'*10}")
+        for r in all_results:
+            top1_sym = "✅" if r['top1_match'] else "❌"
+            top3_str = f"{r['top3_overlap']}/3"
+            print(f"   {r['name']:<35} {top1_sym:<8} {top3_str:<8} {r['avg_score_diff']:<10.4f}")
+        
+        print("\n✅ Detailed rerank comparison PASSED")
+        return True
+        
+    except Exception as e:
+        print(f"\n❌ Detailed comparison FAILED: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+    finally:
+        await vllm_service.close()
+        await deepinfra_service.close()
+
+
 async def main():
     """Run all integration tests"""
     print("\n" + "🚀 " * 20)
@@ -398,9 +927,17 @@ async def main():
     result_pipeline = await test_retrieval_pipeline()
     results.append(("Complete Pipeline", result_pipeline))
     
-    # Test comparison between vLLM and DeepInfra
-    result_comparison = await test_compare_vllm_deepinfra_rerank()
-    results.append(("vLLM vs DeepInfra Comparison", result_comparison))
+    # Test comparison between vLLM and DeepInfra rerank
+    result_rerank_comparison = await test_compare_vllm_deepinfra_rerank()
+    results.append(("vLLM vs DeepInfra Rerank", result_rerank_comparison))
+    
+    # Test comparison between vLLM and DeepInfra embedding
+    result_embedding_comparison = await test_compare_vllm_deepinfra_embedding()
+    results.append(("vLLM vs DeepInfra Embedding", result_embedding_comparison))
+    
+    # Detailed rerank comparison with multiple test cases
+    result_detailed_rerank = await test_detailed_rerank_comparison()
+    results.append(("Detailed Rerank Comparison", result_detailed_rerank))
     
     # Summary
     print("\n" + "=" * 80)

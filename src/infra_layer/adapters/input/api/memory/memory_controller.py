@@ -42,6 +42,8 @@ from infra_layer.adapters.input.api.dto.memory_dto import (
 from core.request.timeout_background import timeout_to_background
 from core.request import log_request
 from core.component.redis_provider import RedisProvider
+from biz_layer.memory_request_log_service import MemoryRequestLogService
+from api_specs.memory_types import RawDataType
 
 logger = logging.getLogger(__name__)
 
@@ -205,7 +207,27 @@ class MemoryController(BaseController):
                 "Conversion completed: group_id=%s, group_name=%s", group_id, group_name
             )
 
-            # 3. Call memory_manager to process the request
+            # 3. Save request logs first (sync_status=-1) for better timing control
+            if (
+                memorize_request.raw_data_type == RawDataType.CONVERSATION
+                and memorize_request.new_raw_data_list
+            ):
+                log_service = get_bean_by_type(MemoryRequestLogService)
+                await log_service.save_request_logs(
+                    request=memorize_request,
+                    version="1.0.0",
+                    endpoint_name="memorize_single_message",
+                    method=request.method,
+                    url=str(request.url),
+                    raw_input_dict=message_data,
+                )
+                logger.info(
+                    "Saved %d request logs: group_id=%s",
+                    len(memorize_request.new_raw_data_list),
+                    group_id,
+                )
+
+            # 4. Call memory_manager to process the request
             logger.info("Starting to process memory request")
             # memorize returns count of extracted memories (int)
             memory_count = await self.memory_manager.memorize(memorize_request)

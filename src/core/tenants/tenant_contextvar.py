@@ -10,7 +10,7 @@ from typing import Optional
 
 from core.tenants.tenant_models import TenantInfo
 from core.tenants.tenant_config import get_tenant_config
-from core.tenants.tenant_info_provider import TenantInfoProvider
+from core.tenants.tenant_info_provider import TenantInfoService
 from core.di.container import get_container
 from core.di.exceptions import BeanNotFoundError
 
@@ -49,12 +49,12 @@ def get_current_tenant() -> Optional[TenantInfo]:
     Get the tenant information for the current request
 
     This method retrieves tenant information from the current context. If no tenant information is set in the current context,
-    it attempts to get the single tenant ID from the tenant configuration and retrieve tenant information via the tenant info provider.
+    it attempts to get the single tenant ID from the tenant configuration and retrieve tenant information via the tenant info service.
 
     Retrieval logic:
     1. First, try to get tenant information from contextvar
     2. If not in contextvar, check if SINGLE_TENANT_ID is set in the configuration
-    3. If SINGLE_TENANT_ID is configured, get TenantInfoProvider from DI container and retrieve tenant information
+    3. If SINGLE_TENANT_ID is configured, get TenantInfoService from DI container and retrieve tenant information
 
     Returns:
         Tenant information in the current context, returns None if not set
@@ -75,16 +75,16 @@ def get_current_tenant() -> Optional[TenantInfo]:
     tenant_config = get_tenant_config()
     single_tenant_id = tenant_config.single_tenant_id
 
-    # 3. If single_tenant_id is configured, get TenantInfoProvider from DI container
+    # 3. If single_tenant_id is configured, get TenantInfoService from DI container
     if single_tenant_id:
         try:
-            # Get TenantInfoProvider instance from DI container (automatically selects primary implementation)
-            provider = get_container().get_bean_by_type(TenantInfoProvider)
-            tenant_info = provider.get_tenant_info(single_tenant_id)
+            # Get TenantInfoService instance from DI container (automatically selects primary implementation)
+            service = get_container().get_bean_by_type(TenantInfoService)
+            tenant_info = service.get_tenant_info(single_tenant_id)
             set_current_tenant(tenant_info)
             return tenant_info
         except BeanNotFoundError:
-            # If TenantInfoProvider is not registered in DI container, return None
+            # If TenantInfoService is not registered in DI container, return None
             # This usually occurs during early application startup or in test environments
             return None
 

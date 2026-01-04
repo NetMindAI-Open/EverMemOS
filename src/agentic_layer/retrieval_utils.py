@@ -425,7 +425,7 @@ async def rerank_candidates(
         )
 
         # 🔥 Convert format: transform [(doc, score)] to format expected by rerank service
-        # rerank_service._rerank_all_hits expects List[Dict[str, Any]]
+        # rerank_service.rerank_memories expects List[Dict[str, Any]]
         candidates_for_rerank = []
         for idx, (doc, score) in enumerate(candidates):
             # Build hit dictionary with sufficient information for rerank
@@ -455,7 +455,7 @@ async def rerank_candidates(
             candidates_for_rerank.append(hit)
 
         # Call rerank service
-        reranked_hits = await rerank_service._rerank_all_hits(
+        reranked_hits = await rerank_service.rerank_memories(
             query, candidates_for_rerank, top_k=top_n
         )
 

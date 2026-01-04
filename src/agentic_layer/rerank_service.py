@@ -8,27 +8,19 @@ Usage:
     from agentic_layer.rerank_service import get_rerank_service
     
     service = get_rerank_service()
-    result = await service.rerank_memories(query, memories, memory_type)
+    result = await service.rerank_memories(query, hits, top_k)
 """
 
 import logging
 import os
-from typing import Optional, Any, Union, List, Dict
+from typing import Optional, Any, List, Dict
 from dataclasses import dataclass, field
 
 from core.di import service
 
-from agentic_layer.rerank_interface import (
-    RerankServiceInterface,
-    RerankError,
-    RerankMemResponse,
-)
+from agentic_layer.rerank_interface import RerankServiceInterface, RerankError
 from agentic_layer.rerank_vllm import VllmRerankService, VllmRerankConfig
-from agentic_layer.rerank_deepinfra import (
-    DeepInfraRerankService,
-    DeepInfraRerankConfig,
-)
-from api_specs.memory_models import MemoryType
+from agentic_layer.rerank_deepinfra import DeepInfraRerankService, DeepInfraRerankConfig
 
 logger = logging.getLogger(__name__)
 
@@ -69,15 +61,21 @@ class HybridRerankConfig:
         """Load hybrid service configuration from environment"""
         # Read provider types
         self.primary_provider = os.getenv("RERANK_PROVIDER", self.primary_provider)
-        self.fallback_provider = os.getenv("RERANK_FALLBACK_PROVIDER", self.fallback_provider)
+        self.fallback_provider = os.getenv(
+            "RERANK_FALLBACK_PROVIDER", self.fallback_provider
+        )
 
         # Read primary service config
         self.primary_api_key = os.getenv("RERANK_API_KEY", self.primary_api_key)
         self.primary_base_url = os.getenv("RERANK_BASE_URL", self.primary_base_url)
 
         # Read fallback service config
-        self.fallback_api_key = os.getenv("RERANK_FALLBACK_API_KEY", self.fallback_api_key)
-        self.fallback_base_url = os.getenv("RERANK_FALLBACK_BASE_URL", self.fallback_base_url)
+        self.fallback_api_key = os.getenv(
+            "RERANK_FALLBACK_API_KEY", self.fallback_api_key
+        )
+        self.fallback_base_url = os.getenv(
+            "RERANK_FALLBACK_BASE_URL", self.fallback_base_url
+        )
 
         # Read shared model configuration
         self.model = os.getenv("RERANK_MODEL", self.model)
@@ -106,7 +104,6 @@ class HybridRerankConfig:
         self.max_primary_failures = int(
             os.getenv("RERANK_MAX_PRIMARY_FAILURES", str(self.max_primary_failures))
         )
-        
 
 
 def _create_service_from_config(
@@ -121,7 +118,7 @@ def _create_service_from_config(
 ) -> RerankServiceInterface:
     """
     Factory function to create a rerank service based on provider type
-    
+
     Args:
         provider: Provider type (vllm or deepinfra)
         api_key: API key for the service
@@ -131,7 +128,7 @@ def _create_service_from_config(
         max_retries: Maximum retry attempts
         batch_size: Batch size for requests
         max_concurrent: Maximum concurrent requests
-        
+
     Returns:
         RerankServiceInterface: The created service instance
     """
@@ -164,22 +161,22 @@ def _create_service_from_config(
 class HybridRerankService(RerankServiceInterface):
     """
     Hybrid Reranking Service with Automatic Fallback
-    
+
     This service implements a dual-strategy approach:
     1. Implements RerankServiceInterface with full API
     2. Primary: Configurable provider (vllm or deepinfra)
     3. Secondary: Configurable fallback provider
     4. Automatic failover on errors with failure tracking
     5. All method calls transparently use fallback logic
-    
+
     Strategy Benefits:
     - Cost optimization: ~95% savings with vllm self-deployed service
     - High availability: Automatic failover ensures reliability
     - Zero downtime: Continues working during vllm service maintenance
-    
+
     Usage:
         service = HybridRerankService()
-        result = await service.rerank_memories(query, memories, memory_type)  # Auto-fallback built-in
+        result = await service.rerank_memories(query, hits, top_k)  # Auto-fallback built-in
     """
 
     def __init__(self, config: Optional[HybridRerankConfig] = None):
@@ -187,7 +184,7 @@ class HybridRerankService(RerankServiceInterface):
             config = HybridRerankConfig()
 
         self.config = config
-        
+
         # Create primary service based on provider type
         self.primary_service = _create_service_from_config(
             provider=config.primary_provider,
@@ -199,7 +196,7 @@ class HybridRerankService(RerankServiceInterface):
             batch_size=config.batch_size,
             max_concurrent=config.max_concurrent_requests,
         )
-        
+
         # Create fallback service if enabled
         self.fallback_service = None
         if config.enable_fallback:
@@ -225,10 +222,10 @@ class HybridRerankService(RerankServiceInterface):
     def get_service(self) -> RerankServiceInterface:
         """
         Get the primary service (for advanced usage)
-        
+
         Returns:
             RerankServiceInterface: The primary service
-            
+
         Note: Prefer using hybrid service methods directly for automatic fallback
         """
         return self.primary_service
@@ -236,48 +233,41 @@ class HybridRerankService(RerankServiceInterface):
     async def rerank_memories(
         self,
         query: str,
-        memories: List[RerankMemResponse],
-        memory_type: MemoryType,
+        hits: List[Dict[str, Any]],
         top_k: Optional[int] = None,
         instruction: Optional[str] = None,
-    ) -> List[RerankMemResponse]:
+    ) -> List[Dict[str, Any]]:
         """Rerank memories with automatic fallback"""
         return await self.execute_with_fallback(
             "rerank_memories",
-            lambda: self.primary_service.rerank_memories(query, memories, memory_type, top_k, instruction),
-            lambda: self.fallback_service.rerank_memories(query, memories, memory_type, top_k, instruction) if self.fallback_service else None,
-        )
-
-    async def rerank_documents(
-        self,
-        query: str,
-        documents: List[str],
-        top_k: Optional[int] = None,
-        instruction: Optional[str] = None,
-    ) -> List[Dict[str, Union[int, str, float]]]:
-        """Rerank documents with automatic fallback"""
-        return await self.execute_with_fallback(
-            "rerank_documents",
-            lambda: self.primary_service.rerank_documents(query, documents, top_k, instruction),
-            lambda: self.fallback_service.rerank_documents(query, documents, top_k, instruction) if self.fallback_service else None,
+            lambda: self.primary_service.rerank_memories(
+                query, hits, top_k, instruction
+            ),
+            lambda: (
+                self.fallback_service.rerank_memories(query, hits, top_k, instruction)
+                if self.fallback_service
+                else None
+            ),
         )
 
     def get_model_name(self) -> str:
         """Get the current model name (from primary service)"""
         return self.primary_service.get_model_name()
 
-    async def execute_with_fallback(self, operation_name: str, primary_func, fallback_func):
+    async def execute_with_fallback(
+        self, operation_name: str, primary_func, fallback_func
+    ):
         """
         Execute operation with automatic fallback logic
-        
+
         Args:
             operation_name: Name of the operation for logging
             primary_func: Function to call on primary service
             fallback_func: Function to call on fallback service (or None if no fallback)
-            
+
         Returns:
             Result from primary or fallback service
-            
+
         Raises:
             RerankError: If both services fail
         """
@@ -313,7 +303,9 @@ class HybridRerankService(RerankServiceInterface):
 
             # Try fallback service
             try:
-                logger.info(f"🔄 Falling back to {self.config.fallback_provider} for {operation_name}")
+                logger.info(
+                    f"🔄 Falling back to {self.config.fallback_provider} for {operation_name}"
+                )
                 result = await fallback_func()
                 return result
 
@@ -348,7 +340,7 @@ _service_instance: Optional[HybridRerankService] = None
 def get_hybrid_service() -> HybridRerankService:
     """
     Get the global hybrid service instance (singleton)
-    
+
     Returns:
         HybridRerankService: The global hybrid service instance
     """
@@ -363,26 +355,26 @@ def get_hybrid_service() -> HybridRerankService:
 def get_rerank_service() -> RerankServiceInterface:
     """
     Get the reranking service (main entry point)
-    
+
     Returns the hybrid service which implements RerankServiceInterface.
     All method calls automatically go through fallback logic.
-    
+
     Returns:
         RerankServiceInterface: The hybrid service with automatic fallback
-        
+
     Example:
         ```python
         from agentic_layer.rerank_service import get_rerank_service
-        
+
         service = get_rerank_service()  # Returns hybrid service with fallback
-        result = await service.rerank_memories(query, memories, memory_type)  # Auto-fallback
+        result = await service.rerank_memories(query, hits, top_k)  # Auto-fallback
         await service.close()
         ```
     """
-    return get_hybrid_service()  # Return hybrid service (implements RerankServiceInterface)
+    return (
+        get_hybrid_service()
+    )  # Return hybrid service (implements RerankServiceInterface)
 
 
 # Export public API
-__all__ = [
-    "get_rerank_service",
-]
+__all__ = ["get_rerank_service"]

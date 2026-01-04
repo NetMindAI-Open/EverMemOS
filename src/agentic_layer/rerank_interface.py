@@ -5,13 +5,12 @@ Defines the abstract interface for all reranking service implementations.
 """
 
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Union
+from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, field
 
 
 class RerankError(Exception):
     """Rerank API error exception class"""
-    pass
 
 
 @dataclass
@@ -34,23 +33,27 @@ class RerankServiceInterface(ABC):
 
     @abstractmethod
     async def rerank_memories(
-        self, query: str, retrieve_response: Any, instruction: str = None
-    ) -> Union[RerankMemResponse, List[Dict[str, Any]]]:
+        self,
+        query: str,
+        hits: List[Dict[str, Any]],
+        top_k: Optional[int] = None,
+        instruction: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
         """
         Rerank memories based on query
-        
+
         Args:
             query: Query text
-            retrieve_response: Retrieved memories (can be RetrieveMemResponse or List[Dict])
+            hits: List of memory hits to rerank (each hit is a dict with memory data)
+            top_k: Return top K results (optional, if None returns all reranked results)
             instruction: Optional reranking instruction
-            
+
         Returns:
-            Reranked memories (RerankMemResponse or List[Dict[str, Any]])
+            List of reranked memory hits, sorted by relevance score
         """
-        pass
+        ...
 
     @abstractmethod
     async def close(self):
         """Close and cleanup resources"""
-        pass
-
+        ...

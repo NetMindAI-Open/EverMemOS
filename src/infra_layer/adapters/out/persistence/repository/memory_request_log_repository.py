@@ -152,6 +152,7 @@ class MemoryRequestLogRepository(BaseRepository[MemoryRequestLog]):
         end_time: Optional[datetime] = None,
         limit: int = 100,
         ascending: bool = True,
+        exclude_message_ids: Optional[List[str]] = None,
         session: Optional[AsyncClientSession] = None,
     ) -> List[MemoryRequestLog]:
         """
@@ -172,6 +173,7 @@ class MemoryRequestLogRepository(BaseRepository[MemoryRequestLog]):
             limit: Maximum number of records to return
             ascending: If True (default), sort by created_at ascending (oldest first);
                        if False, sort descending (newest first)
+            exclude_message_ids: Message IDs to exclude from results
             session: Optional MongoDB session
 
         Returns:
@@ -195,6 +197,10 @@ class MemoryRequestLogRepository(BaseRepository[MemoryRequestLog]):
                 else:
                     query["created_at"] = {"$lte": end_time}
 
+            # Exclude specific message_ids
+            if exclude_message_ids:
+                query["message_id"] = {"$nin": exclude_message_ids}
+
             # Determine sort order
             sort_order = 1 if ascending else -1
 
@@ -205,9 +211,10 @@ class MemoryRequestLogRepository(BaseRepository[MemoryRequestLog]):
                 .to_list()
             )
             logger.debug(
-                "Query Memory request logs by group_id with statuses: group_id=%s, sync_status_list=%s, count=%d",
+                "Query Memory request logs by group_id with statuses: group_id=%s, sync_status_list=%s, exclude=%d, count=%d",
                 group_id,
                 sync_status_list,
+                len(exclude_message_ids) if exclude_message_ids else 0,
                 len(results),
             )
             return results
@@ -384,21 +391,22 @@ class MemoryRequestLogRepository(BaseRepository[MemoryRequestLog]):
             return 0
 
     async def mark_as_used_by_group_id(
-        self, group_id: str, session: Optional[AsyncClientSession] = None
+        self,
+        group_id: str,
+        exclude_message_ids: Optional[List[str]] = None,
+        session: Optional[AsyncClientSession] = None,
     ) -> int:
         """
-        Mark unused data for the specified group_id as used
+        Mark all pending and accumulating data for the specified group_id as used
 
         Batch update sync_status: -1 or 0 -> 1, used for delete_conversation_data
-        (after boundary detection).
-        - -1: Just saved log records (messages from current request)
-        -  0: Already confirmed window accumulation data (messages accumulated before)
-        Both are marked as 1 (used).
+        (after boundary detection). Processes both pending (-1) and accumulating (0) records.
 
         Uses (group_id, sync_status) composite index for efficient querying.
 
         Args:
             group_id: Conversation group ID
+            exclude_message_ids: Message IDs to exclude from update
             session: Optional MongoDB session
 
         Returns:
@@ -406,14 +414,21 @@ class MemoryRequestLogRepository(BaseRepository[MemoryRequestLog]):
         """
         try:
             collection = MemoryRequestLog.get_pymongo_collection()
+            query = {"group_id": group_id, "sync_status": {"$in": [-1, 0]}}
+
+            # Exclude specific message_ids
+            if exclude_message_ids:
+                query["message_id"] = {"$nin": exclude_message_ids}
+
             result = await collection.update_many(
-                {"group_id": group_id, "sync_status": {"$in": [-1, 0]}},
-                {"$set": {"sync_status": 1}},
-                session=session,
+                query, {"$set": {"sync_status": 1}}, session=session
             )
             modified_count = result.modified_count if result else 0
             logger.info(
-                "Marked as used: group_id=%s, modified=%d", group_id, modified_count
+                "Marked as used: group_id=%s, exclude=%d, modified=%d",
+                group_id,
+                len(exclude_message_ids) if exclude_message_ids else 0,
+                modified_count,
             )
             return modified_count
         except Exception as e:

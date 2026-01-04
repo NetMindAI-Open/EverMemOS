@@ -5,8 +5,8 @@ Request status service
 Responsible for writing request status to Redis (using Hash structure) and providing read functionality.
 Used to track the status of requests moved to the background.
 
-Redis Key format: request_status:{organization_id}:{space_id}:{request_id}
-TTL: 2 hours
+Redis Key format: request_status:{tenant_key_prefix}:{request_id}
+TTL: 1 hour
 """
 
 from typing import Any, Dict, Optional
@@ -15,6 +15,7 @@ from core.component.redis_provider import RedisProvider
 from core.di import service
 from core.di.utils import get_bean_by_type
 from core.observation.logger import get_logger
+from core.tenants.request_tenant_provider import RequestTenantInfo
 
 logger = get_logger(__name__)
 
@@ -33,10 +34,10 @@ class RequestStatusService:
     Responsibilities:
     - Write request status to Redis (using Hash structure for extensibility)
     - Provide functionality to read specific request status
-    - Set a TTL of 2 hours
+    - Set a TTL of 1 hour
 
     Redis Hash structure example:
-    request_status:{org_id}:{space_id}:{request_id} = {
+    request_status:{tenant_key_prefix}:{request_id} = {
         "status": "start|success|failed",
         "url": "request URL",
         "method": "GET|POST|...",
@@ -64,24 +65,22 @@ class RequestStatusService:
             self._redis_provider = get_bean_by_type(RedisProvider)
         return self._redis_provider
 
-    def _build_key(self, organization_id: str, space_id: str, request_id: str) -> str:
+    def _build_key(self, tenant_info: RequestTenantInfo, request_id: str) -> str:
         """
         Build Redis Key
 
         Args:
-            organization_id: Organization ID
-            space_id: Space ID
+            tenant_info: Request tenant information
             request_id: Request ID
 
         Returns:
             str: Redis key
         """
-        return f"{REQUEST_STATUS_KEY_PREFIX}:{organization_id}:{space_id}:{request_id}"
+        return tenant_info.build_status_key(REQUEST_STATUS_KEY_PREFIX, request_id)
 
     async def update_request_status(
         self,
-        organization_id: str,
-        space_id: str,
+        tenant_info: RequestTenantInfo,
         request_id: str,
         status: str,
         url: Optional[str] = None,
@@ -95,8 +94,7 @@ class RequestStatusService:
         Update request status to Redis
 
         Args:
-            organization_id: Organization ID
-            space_id: Space ID
+            tenant_info: Request tenant information
             request_id: Request ID
             status: Request status (start/success/failed)
             url: Request URL (optional)
@@ -109,12 +107,10 @@ class RequestStatusService:
         Returns:
             bool: Whether the update was successful
         """
-        if not organization_id or not space_id or not request_id:
+        if not request_id:
             logger.warning(
-                "Missing required parameters, skipping request status update: org=%s, space=%s, req=%s",
-                organization_id,
-                space_id,
-                request_id,
+                "Missing request_id, skipping request status update: tenant_key_prefix=%s",
+                tenant_info.tenant_key_prefix,
             )
             return False
 
@@ -122,7 +118,7 @@ class RequestStatusService:
             redis_provider = self._get_redis_provider()
             client = await redis_provider.get_client()
 
-            key = self._build_key(organization_id, space_id, request_id)
+            key = self._build_key(tenant_info, request_id)
 
             # Build fields to update
             fields: Dict[str, str] = {"status": status}
@@ -157,34 +153,30 @@ class RequestStatusService:
 
         except Exception as e:
             logger.error(
-                "Failed to update request status to Redis: org=%s, space=%s, req=%s, error=%s",
-                organization_id,
-                space_id,
+                "Failed to update request status to Redis: tenant_key_prefix=%s, req=%s, error=%s",
+                tenant_info.tenant_key_prefix,
                 request_id,
                 str(e),
             )
             return False
 
     async def get_request_status(
-        self, organization_id: str, space_id: str, request_id: str
+        self, tenant_info: RequestTenantInfo, request_id: str
     ) -> Optional[Dict[str, Any]]:
         """
         Get request status
 
         Args:
-            organization_id: Organization ID
-            space_id: Space ID
+            tenant_info: Request tenant information
             request_id: Request ID
 
         Returns:
             Optional[Dict[str, Any]]: Request status information, returns None if not exists
         """
-        if not organization_id or not space_id or not request_id:
+        if not request_id:
             logger.warning(
-                "Missing required parameters, cannot get request status: org=%s, space=%s, req=%s",
-                organization_id,
-                space_id,
-                request_id,
+                "Missing request_id, cannot get request status: tenant_key_prefix=%s",
+                tenant_info.tenant_key_prefix,
             )
             return None
 
@@ -192,7 +184,7 @@ class RequestStatusService:
             redis_provider = self._get_redis_provider()
             client = await redis_provider.get_client()
 
-            key = self._build_key(organization_id, space_id, request_id)
+            key = self._build_key(tenant_info, request_id)
 
             # Use Pipeline to combine hgetall + ttl operations (reduce network round trips)
             pipe = client.pipeline()
@@ -208,11 +200,7 @@ class RequestStatusService:
                 return None
 
             # Convert data types
-            result: Dict[str, Any] = {
-                "organization_id": organization_id,
-                "space_id": space_id,
-                "request_id": request_id,
-            }
+            result: Dict[str, Any] = {"request_id": request_id}
 
             for field, value in data.items():
                 if field in ("http_code", "time_ms", "start_time", "end_time"):
@@ -233,43 +221,40 @@ class RequestStatusService:
 
         except Exception as e:
             logger.error(
-                "Failed to get request status: org=%s, space=%s, req=%s, error=%s",
-                organization_id,
-                space_id,
+                "Failed to get request status: tenant_key_prefix=%s, req=%s, error=%s",
+                tenant_info.tenant_key_prefix,
                 request_id,
                 str(e),
             )
             return None
 
     async def delete_request_status(
-        self, organization_id: str, space_id: str, request_id: str
+        self, tenant_info: RequestTenantInfo, request_id: str
     ) -> bool:
         """
         Delete request status
 
         Args:
-            organization_id: Organization ID
-            space_id: Space ID
+            tenant_info: Request tenant information
             request_id: Request ID
 
         Returns:
             bool: Whether deletion was successful
         """
-        if not organization_id or not space_id or not request_id:
+        if not request_id:
             return False
 
         try:
             redis_provider = self._get_redis_provider()
-            key = self._build_key(organization_id, space_id, request_id)
+            key = self._build_key(tenant_info, request_id)
             deleted = await redis_provider.delete(key)
             logger.debug("Request status deleted: key=%s, deleted=%d", key, deleted)
             return deleted > 0
 
         except Exception as e:
             logger.error(
-                "Failed to delete request status: org=%s, space=%s, req=%s, error=%s",
-                organization_id,
-                space_id,
+                "Failed to delete request status: tenant_key_prefix=%s, req=%s, error=%s",
+                tenant_info.tenant_key_prefix,
                 request_id,
                 str(e),
             )

@@ -4,9 +4,9 @@
 Test the functionality of ConversationDataRepository
 
 Test contents include:
-1. save_conversation_data with auto_confirm_pending parameter
-2. get_conversation_data with include_pending parameter
-3. delete_conversation_data
+1. save_conversation_data (confirms specified message_ids only, -1 -> 0)
+2. get_conversation_data (returns sync_status=-1 and 0)
+3. delete_conversation_data (marks sync_status=-1 and 0 as used -> 1)
 4. fetch_unprocessed_conversation_data
 5. sync_status state transitions
 """
@@ -151,12 +151,12 @@ async def test_save_conversation_data_basic():
     logger.info("✅ Basic save_conversation_data test completed")
 
 
-async def test_save_conversation_data_auto_confirm_pending():
-    """Test save_conversation_data with auto_confirm_pending parameter"""
-    logger.info("Starting test for save_conversation_data with auto_confirm_pending...")
+async def test_save_conversation_data_precise():
+    """Test save_conversation_data only confirms specified message_ids"""
+    logger.info("Starting test for save_conversation_data precise update...")
 
     repo = get_bean_by_type(ConversationDataRepository)
-    group_id = generate_unique_id("test_auto_confirm_")
+    group_id = generate_unique_id("test_precise_")
 
     try:
         # Create 3 log records with sync_status=-1
@@ -175,84 +175,18 @@ async def test_save_conversation_data_auto_confirm_pending():
         )
         logger.info("✅ Created 3 test log records with sync_status=-1")
 
-        # Save only msg1 with auto_confirm_pending=True (default)
-        # This should confirm msg1 precisely AND also confirm msg2, msg3 automatically
+        # save_conversation_data only confirms the specified message_id
         raw_data_list = [
             RawData(
                 data_id=msg1_id, content={"content": "Message 1"}, data_type="message"
             )
         ]
 
-        result = await repo.save_conversation_data(
-            raw_data_list, group_id, auto_confirm_pending=True
-        )
+        result = await repo.save_conversation_data(raw_data_list, group_id)
         assert result is True
-        logger.info(
-            "✅ save_conversation_data with auto_confirm_pending=True succeeded"
-        )
+        logger.info("✅ save_conversation_data succeeded")
 
-        # Verify all 3 records have sync_status=0
-        logs = await get_logs_by_group_id(group_id)
-        assert len(logs) == 3
-        for log in logs:
-            assert (
-                log.sync_status == 0
-            ), f"Expected sync_status=0, got {log.sync_status}"
-        logger.info("✅ All 3 records have sync_status=0 (auto-confirmed)")
-
-    except Exception as e:
-        logger.error("❌ Test for auto_confirm_pending failed: %s", e)
-        raise
-    finally:
-        await cleanup_test_data(group_id)
-        logger.info("✅ Cleaned up test data")
-
-    logger.info("✅ auto_confirm_pending test completed")
-
-
-async def test_save_conversation_data_auto_confirm_pending_false():
-    """Test save_conversation_data with auto_confirm_pending=False"""
-    logger.info(
-        "Starting test for save_conversation_data with auto_confirm_pending=False..."
-    )
-
-    repo = get_bean_by_type(ConversationDataRepository)
-    group_id = generate_unique_id("test_no_auto_confirm_")
-
-    try:
-        # Create 3 log records with sync_status=-1
-        msg1_id = generate_unique_id("msg_")
-        msg2_id = generate_unique_id("msg_")
-        msg3_id = generate_unique_id("msg_")
-
-        await create_test_memory_request_log(
-            group_id=group_id, message_id=msg1_id, content="Message 1", sync_status=-1
-        )
-        await create_test_memory_request_log(
-            group_id=group_id, message_id=msg2_id, content="Message 2", sync_status=-1
-        )
-        await create_test_memory_request_log(
-            group_id=group_id, message_id=msg3_id, content="Message 3", sync_status=-1
-        )
-        logger.info("✅ Created 3 test log records with sync_status=-1")
-
-        # Save only msg1 with auto_confirm_pending=False
-        # This should only confirm msg1, leaving msg2 and msg3 with sync_status=-1
-        raw_data_list = [
-            RawData(
-                data_id=msg1_id, content={"content": "Message 1"}, data_type="message"
-            )
-        ]
-
-        result = await repo.save_conversation_data(
-            raw_data_list, group_id, auto_confirm_pending=False
-        )
-        assert result is True
-        logger.info(
-            "✅ save_conversation_data with auto_confirm_pending=False succeeded"
-        )
-
-        # Verify only msg1 has sync_status=0
+        # Verify only msg1 has sync_status=0, others remain -1
         logs = await get_logs_by_group_id(group_id)
         assert len(logs) == 3
 
@@ -271,74 +205,84 @@ async def test_save_conversation_data_auto_confirm_pending_false():
         logger.info("✅ Only msg1 has sync_status=0, others remain at -1")
 
     except Exception as e:
-        logger.error("❌ Test for auto_confirm_pending=False failed: %s", e)
+        logger.error("❌ Test for save_conversation_data precise failed: %s", e)
         raise
     finally:
         await cleanup_test_data(group_id)
         logger.info("✅ Cleaned up test data")
 
-    logger.info("✅ auto_confirm_pending=False test completed")
+    logger.info("✅ save_conversation_data precise test completed")
 
 
-async def test_get_conversation_data_include_pending():
-    """Test get_conversation_data with include_pending parameter"""
-    logger.info("Starting test for get_conversation_data with include_pending...")
+async def test_get_conversation_data():
+    """Test get_conversation_data returns sync_status=-1 and 0 records"""
+    logger.info("Starting test for get_conversation_data...")
 
     repo = get_bean_by_type(ConversationDataRepository)
-    group_id = generate_unique_id("test_include_pending_")
+    group_id = generate_unique_id("test_get_data_")
 
     try:
         # Create logs with different sync_status
+        msg1_id = generate_unique_id("msg_")
+        msg2_id = generate_unique_id("msg_")
+        msg3_id = generate_unique_id("msg_")
+
         await create_test_memory_request_log(
             group_id=group_id,
-            message_id=generate_unique_id("msg_"),
+            message_id=msg1_id,
             content="Pending message",
             sync_status=-1,  # pending
         )
         await create_test_memory_request_log(
             group_id=group_id,
-            message_id=generate_unique_id("msg_"),
+            message_id=msg2_id,
             content="Accumulating message",
             sync_status=0,  # accumulating
         )
         await create_test_memory_request_log(
             group_id=group_id,
-            message_id=generate_unique_id("msg_"),
+            message_id=msg3_id,
             content="Used message",
             sync_status=1,  # used
         )
         logger.info("✅ Created logs with sync_status -1, 0, 1")
 
-        # Test include_pending=True (default) - should get both -1 and 0
-        result_with_pending = await repo.get_conversation_data(
-            group_id=group_id, include_pending=True
-        )
+        # get_conversation_data should return both -1 and 0, exclude 1
+        result = await repo.get_conversation_data(group_id=group_id)
         assert (
-            len(result_with_pending) == 2
-        ), f"Expected 2 results, got {len(result_with_pending)}"
-        logger.info("✅ include_pending=True returned 2 records (-1 and 0)")
+            len(result) == 2
+        ), f"Expected 2 results (sync_status=-1 and 0), got {len(result)}"
+        # RawData.content is dict, need to extract the internal "content" field
+        contents = [r.content.get("content") for r in result]
+        assert "Pending message" in contents
+        assert "Accumulating message" in contents
+        assert "Used message" not in contents
+        logger.info(
+            "✅ get_conversation_data returned 2 records (sync_status=-1 and 0)"
+        )
 
-        # Test include_pending=False - should only get 0
-        result_without_pending = await repo.get_conversation_data(
-            group_id=group_id, include_pending=False
+        # Test exclude_message_ids: exclude msg1_id
+        result_excluded = await repo.get_conversation_data(
+            group_id=group_id, exclude_message_ids=[msg1_id]
         )
         assert (
-            len(result_without_pending) == 1
-        ), f"Expected 1 result, got {len(result_without_pending)}"
-        logger.info("✅ include_pending=False returned 1 record (only 0)")
+            len(result_excluded) == 1
+        ), f"Expected 1 result after exclusion, got {len(result_excluded)}"
+        assert result_excluded[0].content.get("content") == "Accumulating message"
+        logger.info("✅ get_conversation_data with exclude_message_ids works correctly")
 
     except Exception as e:
-        logger.error("❌ Test for include_pending failed: %s", e)
+        logger.error("❌ Test for get_conversation_data failed: %s", e)
         raise
     finally:
         await cleanup_test_data(group_id)
         logger.info("✅ Cleaned up test data")
 
-    logger.info("✅ include_pending test completed")
+    logger.info("✅ get_conversation_data test completed")
 
 
 async def test_delete_conversation_data():
-    """Test delete_conversation_data (marks as used)"""
+    """Test delete_conversation_data (marks sync_status=-1 and 0 as used)"""
     logger.info("Starting test for delete_conversation_data...")
 
     repo = get_bean_by_type(ConversationDataRepository)
@@ -346,35 +290,36 @@ async def test_delete_conversation_data():
 
     try:
         # Create logs with sync_status=-1 and 0
+        msg1_id = generate_unique_id("msg_")
+        msg2_id = generate_unique_id("msg_")
+
         await create_test_memory_request_log(
             group_id=group_id,
-            message_id=generate_unique_id("msg_"),
+            message_id=msg1_id,
             content="Pending message",
             sync_status=-1,
         )
         await create_test_memory_request_log(
             group_id=group_id,
-            message_id=generate_unique_id("msg_"),
+            message_id=msg2_id,
             content="Accumulating message",
             sync_status=0,
         )
         logger.info("✅ Created logs with sync_status -1 and 0")
 
-        # Delete (mark as used)
+        # Delete (mark as used) - affects both -1 and 0
         result = await repo.delete_conversation_data(group_id)
         assert result is True
         logger.info("✅ delete_conversation_data returned True")
 
-        # Verify all records now have sync_status=1
+        # Verify: both -1 and 0 are now 1
         logs = await get_logs_by_group_id(group_id)
         assert len(logs) == 2
-        for log in logs:
-            assert (
-                log.sync_status == 1
-            ), f"Expected sync_status=1, got {log.sync_status}"
-        logger.info("✅ All records now have sync_status=1 (marked as used)")
+        used_count = sum(1 for log in logs if log.sync_status == 1)
+        assert used_count == 2, f"Expected 2 used records, got {used_count}"
+        logger.info("✅ Both sync_status=-1 and 0 were marked as used (1)")
 
-        # Verify get_conversation_data returns empty
+        # Verify get_conversation_data returns empty (no -1 or 0 left)
         remaining = await repo.get_conversation_data(group_id)
         assert len(remaining) == 0, f"Expected 0 results, got {len(remaining)}"
         logger.info("✅ get_conversation_data returns empty after deletion")
@@ -387,6 +332,69 @@ async def test_delete_conversation_data():
         logger.info("✅ Cleaned up test data")
 
     logger.info("✅ delete_conversation_data test completed")
+
+
+async def test_delete_conversation_data_with_exclude():
+    """Test delete_conversation_data with exclude_message_ids"""
+    logger.info("Starting test for delete_conversation_data with exclude...")
+
+    repo = get_bean_by_type(ConversationDataRepository)
+    group_id = generate_unique_id("test_delete_exclude_")
+
+    try:
+        # Create logs with sync_status=-1 and 0
+        msg1_id = generate_unique_id("msg_")
+        msg2_id = generate_unique_id("msg_")
+        msg3_id = generate_unique_id("msg_")
+
+        await create_test_memory_request_log(
+            group_id=group_id, message_id=msg1_id, content="Message 1", sync_status=-1
+        )
+        await create_test_memory_request_log(
+            group_id=group_id, message_id=msg2_id, content="Message 2", sync_status=0
+        )
+        await create_test_memory_request_log(
+            group_id=group_id, message_id=msg3_id, content="Message 3", sync_status=-1
+        )
+        logger.info("✅ Created 3 logs")
+
+        # Delete but exclude msg3_id
+        result = await repo.delete_conversation_data(
+            group_id, exclude_message_ids=[msg3_id]
+        )
+        assert result is True
+        logger.info("✅ delete_conversation_data with exclude returned True")
+
+        # Verify: msg1 and msg2 are now 1, msg3 remains -1
+        logs = await get_logs_by_group_id(group_id)
+        assert len(logs) == 3
+
+        for log in logs:
+            if log.message_id == msg3_id:
+                assert (
+                    log.sync_status == -1
+                ), f"msg3 should remain -1, got {log.sync_status}"
+            else:
+                assert (
+                    log.sync_status == 1
+                ), f"Other msgs should be 1, got {log.sync_status}"
+
+        logger.info("✅ msg3 was excluded, others were marked as used")
+
+        # Verify get_conversation_data returns only msg3
+        remaining = await repo.get_conversation_data(group_id)
+        assert len(remaining) == 1, f"Expected 1 result, got {len(remaining)}"
+        assert remaining[0].data_id == msg3_id
+        logger.info("✅ Only excluded message remains")
+
+    except Exception as e:
+        logger.error("❌ Test for delete_conversation_data with exclude failed: %s", e)
+        raise
+    finally:
+        await cleanup_test_data(group_id)
+        logger.info("✅ Cleaned up test data")
+
+    logger.info("✅ delete_conversation_data with exclude test completed")
 
 
 async def test_fetch_unprocessed_conversation_data():
@@ -553,18 +561,18 @@ async def test_empty_raw_data_list():
         )
         logger.info("✅ Created 2 log records")
 
-        # Save with empty list - should fall back to group_id update
+        # Save with empty list - should do nothing (no message_ids to confirm)
         result = await repo.save_conversation_data([], group_id)
         assert result is True
         logger.info("✅ save_conversation_data with empty list returned True")
 
-        # Verify all records are confirmed (fallback behavior)
+        # Verify all records remain unchanged (sync_status=-1)
         logs = await get_logs_by_group_id(group_id)
         for log in logs:
             assert (
-                log.sync_status == 0
-            ), f"Expected sync_status=0, got {log.sync_status}"
-        logger.info("✅ All records confirmed via fallback (empty list)")
+                log.sync_status == -1
+            ), f"Expected sync_status=-1 (unchanged), got {log.sync_status}"
+        logger.info("✅ All records remain unchanged with empty list")
 
     except Exception as e:
         logger.error("❌ Test for empty raw_data_list failed: %s", e)
@@ -599,7 +607,7 @@ async def test_raw_data_list_without_data_id():
         )
         logger.info("✅ Created 2 log records")
 
-        # Save with RawData that has no data_id
+        # Save with RawData that has no data_id (empty string is filtered out)
         raw_data_list = [
             RawData(
                 data_id="",
@@ -612,13 +620,13 @@ async def test_raw_data_list_without_data_id():
         assert result is True
         logger.info("✅ save_conversation_data with no data_id returned True")
 
-        # Verify all records are confirmed (fallback behavior)
+        # Verify all records remain unchanged (empty data_id is filtered out)
         logs = await get_logs_by_group_id(group_id)
         for log in logs:
             assert (
-                log.sync_status == 0
-            ), f"Expected sync_status=0, got {log.sync_status}"
-        logger.info("✅ All records confirmed via fallback (no data_id)")
+                log.sync_status == -1
+            ), f"Expected sync_status=-1 (unchanged), got {log.sync_status}"
+        logger.info("✅ All records remain unchanged (empty data_id filtered out)")
 
     except Exception as e:
         logger.error("❌ Test for raw_data_list without data_id failed: %s", e)
@@ -636,10 +644,10 @@ async def run_all_tests():
 
     try:
         await test_save_conversation_data_basic()
-        await test_save_conversation_data_auto_confirm_pending()
-        await test_save_conversation_data_auto_confirm_pending_false()
-        await test_get_conversation_data_include_pending()
+        await test_save_conversation_data_precise()
+        await test_get_conversation_data()
         await test_delete_conversation_data()
+        await test_delete_conversation_data_with_exclude()
         await test_fetch_unprocessed_conversation_data()
         await test_sync_status_state_transitions()
         await test_empty_raw_data_list()

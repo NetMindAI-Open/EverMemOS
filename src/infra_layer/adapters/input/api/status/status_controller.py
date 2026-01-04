@@ -1,22 +1,22 @@
 # -*- coding: utf-8 -*-
 """
-请求状态控制器
+Request status controller
 
-提供 API 用于查询请求的处理状态。
-主要用于跟踪转后台的请求。
+Provides API for querying the processing status of requests.
+Mainly used for tracking requests that are moved to background processing.
 """
 
 from typing import Optional
 
-from fastapi import Header, HTTPException
+from fastapi import Header, HTTPException, Request as FastAPIRequest
 
 from core.di.decorators import component
+from core.di.utils import get_bean_by_type
 from core.interface.controller.base_controller import BaseController, get
 from core.observation.logger import get_logger
+from core.tenants.request_tenant_provider import RequestTenantProvider
 from biz_layer.request_status_service import RequestStatusService
-from infra_layer.adapters.input.api.dto.status_dto import (
-    RequestStatusResponse,
-)
+from infra_layer.adapters.input.api.dto.status_dto import RequestStatusResponse
 
 
 logger = get_logger(__name__)
@@ -25,65 +25,68 @@ logger = get_logger(__name__)
 @component(name="statusController")
 class StatusController(BaseController):
     """
-    请求状态控制器
+    Request status controller
 
-    提供 API 用于查询请求的处理状态，主要用于跟踪转后台的请求。
+    Provides API for querying the processing status of requests, mainly used for tracking requests that are moved to background processing.
     """
 
     def __init__(self, request_status_service: RequestStatusService):
         """
-        初始化控制器
+        Initialize the controller
 
         Args:
-            request_status_service: 请求状态服务（通过依赖注入）
+            request_status_service: Request status service (via dependency injection)
         """
         super().__init__(
             prefix="/api/v1/stats",
             tags=["Stats - Request Status"],
-            default_auth="none",  # 根据需求调整认证策略
+            default_auth="none",  # Adjust authentication strategy as needed
         )
         self.request_status_service = request_status_service
+        self._request_tenant_provider: Optional[RequestTenantProvider] = None
         logger.info("StatusController initialized")
+
+    def _get_request_tenant_provider(self) -> RequestTenantProvider:
+        """Get RequestTenantProvider (lazy loading)"""
+        if self._request_tenant_provider is None:
+            self._request_tenant_provider = get_bean_by_type(RequestTenantProvider)
+        return self._request_tenant_provider
 
     @get(
         "/request",
         response_model=RequestStatusResponse,
-        summary="查询请求状态",
+        summary="Query request status",
         description="""
-        查询特定请求的处理状态
+        Query the processing status of a specific request
 
-        ## 功能说明：
-        - 根据 organization_id、space_id、request_id 查询请求状态
-        - 返回请求的处理进度（start/success/failed）
-        - 支持查看请求耗时、HTTP 状态码等信息
+        ## Function description:
+        - Query request status by request_id
+        - Return request processing progress (start/success/failed)
+        - Support viewing request duration, HTTP status code, and other information
 
-        ## 参数传递方式：
-        通过 HTTP Header 传递参数（与其他 API 保持一致）：
-        - X-Organization-Id: 组织 ID
-        - X-Space-Id: 空间 ID
-        - X-Request-Id: 请求 ID
+        ## Parameter passing method:
+        Pass parameters via HTTP Header:
+        - X-Request-Id: Request ID
 
-        ## 使用场景：
-        - 转后台请求的状态跟踪
-        - 客户端轮询请求完成状态
+        ## Use cases:
+        - Tracking status of background requests
+        - Client polling for request completion status
 
-        ## 注意：
-        - 请求状态数据有 2 小时的 TTL，过期后将无法查询
+        ## Note:
+        - Request status data has a TTL of 1 hour; it will no longer be queryable after expiration
 
-        ## 接口路径：
+        ## API path:
         GET /api/v1/stats/request
         """,
         responses={
             200: {
-                "description": "查询成功",
+                "description": "Query successful",
                 "content": {
                     "application/json": {
                         "example": {
                             "success": True,
                             "found": True,
                             "data": {
-                                "organization_id": "org-123",
-                                "space_id": "space-456",
                                 "request_id": "req-789",
                                 "status": "success",
                                 "url": "/api/memory/memorize",
@@ -92,7 +95,7 @@ class StatusController(BaseController):
                                 "time_ms": 1500,
                                 "start_time": 1702400000000,
                                 "end_time": 1702400001500,
-                                "ttl_seconds": 7100,
+                                "ttl_seconds": 3500,
                             },
                             "message": None,
                         }
@@ -100,10 +103,12 @@ class StatusController(BaseController):
                 },
             },
             400: {
-                "description": "参数错误",
+                "description": "Parameter error",
                 "content": {
                     "application/json": {
-                        "example": {"detail": "缺少必要的 Header 参数"}
+                        "example": {
+                            "detail": "Missing required Header parameter: X-Request-Id"
+                        }
                     }
                 },
             },
@@ -111,46 +116,35 @@ class StatusController(BaseController):
     )
     async def get_request_status(
         self,
-        x_organization_id: Optional[str] = Header(
-            None, alias="X-Organization-Id", description="组织 ID"
-        ),
-        x_space_id: Optional[str] = Header(
-            None, alias="X-Space-Id", description="空间 ID"
-        ),
+        request: FastAPIRequest,
         x_request_id: Optional[str] = Header(
-            None, alias="X-Request-Id", description="请求 ID"
+            None, alias="X-Request-Id", description="Request ID"
         ),
     ) -> RequestStatusResponse:
         """
-        查询请求状态
+        Query request status
 
-        通过 HTTP Header 传递参数：
-        - X-Organization-Id
-        - X-Space-Id
-        - X-Request-Id
+        Pass parameters via HTTP Header:
+        - X-Request-Id: Request ID
 
         Returns:
-            RequestStatusResponse: 请求状态响应
+            RequestStatusResponse: Request status response
         """
-        # 参数校验
-        if not x_organization_id or not x_space_id or not x_request_id:
-            missing = []
-            if not x_organization_id:
-                missing.append("X-Organization-Id")
-            if not x_space_id:
-                missing.append("X-Space-Id")
-            if not x_request_id:
-                missing.append("X-Request-Id")
+        # Parameter validation
+        if not x_request_id:
             raise HTTPException(
-                status_code=400, detail=f"缺少必要的 Header 参数: {', '.join(missing)}"
+                status_code=400,
+                detail="Missing required Header parameter: X-Request-Id",
             )
 
         try:
-            # 查询状态
+            # Get tenant information from request via RequestTenantProvider
+            tenant_provider = self._get_request_tenant_provider()
+            tenant_info = tenant_provider.get_tenant_info_from_request(request)
+
+            # Query status
             data = await self.request_status_service.get_request_status(
-                organization_id=x_organization_id,
-                space_id=x_space_id,
-                request_id=x_request_id,
+                tenant_info, x_request_id
             )
 
             if data is None:
@@ -158,7 +152,7 @@ class StatusController(BaseController):
                     success=True,
                     found=False,
                     data=None,
-                    message="请求状态不存在或已过期",
+                    message="Request status does not exist or has expired",
                 )
 
             return RequestStatusResponse(
@@ -167,14 +161,11 @@ class StatusController(BaseController):
 
         except Exception as e:
             logger.error(
-                "查询请求状态异常: org=%s, space=%s, req=%s, error=%s",
-                x_organization_id,
-                x_space_id,
+                "Exception when querying request status: req=%s, error=%s",
                 x_request_id,
                 str(e),
                 exc_info=True,
             )
             return RequestStatusResponse(
-                success=False, found=False, data=None, message=f"查询失败: {str(e)}"
+                success=False, found=False, data=None, message=f"Query failed: {str(e)}"
             )
-

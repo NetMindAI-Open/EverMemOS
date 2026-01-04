@@ -856,10 +856,10 @@ async def preprocess_conv_request(
 ) -> MemorizeRequest:
     """
     Simplified request preprocessing:
-    1. Read all historical messages from Redis
+    1. Read all historical messages from conversation_data_repo (excluding current request's messages)
     2. Set historical messages as history_raw_data_list
     3. Set current new message as new_raw_data_list
-    4. Boundary detection handled by subsequent logic (will clear or retain Redis after detection)
+    4. Boundary detection handled by subsequent logic (will clear or retain after detection)
     """
 
     logger.info(f"[preprocess] Start processing: group_id={request.group_id}")
@@ -873,14 +873,21 @@ async def preprocess_conv_request(
     conversation_data_repo = get_bean_by_type(ConversationDataRepository)
 
     try:
-        # Step 1: First get historical messages from conversation_data_repo
-        # No time range limit, get up to 1000 recent messages (controlled by cache manager's max_length)
+        # Extract message_ids from new_raw_data_list to exclude them
+        new_message_ids = [r.data_id for r in request.new_raw_data_list if r.data_id]
+
+        # Step 1: Get historical messages, excluding current request's messages
+        # This handles the case where messages were just saved with sync_status=-1
         history_raw_data_list = await conversation_data_repo.get_conversation_data(
-            group_id=request.group_id, start_time=None, end_time=None, limit=1000
+            group_id=request.group_id,
+            start_time=None,
+            end_time=None,
+            limit=1000,
+            exclude_message_ids=new_message_ids,
         )
 
         logger.info(
-            f"[preprocess] Read {len(history_raw_data_list)} historical messages from conversation_data_repo"
+            f"[preprocess] Read {len(history_raw_data_list)} historical messages (excluded {len(new_message_ids)} new)"
         )
 
         # Update request
@@ -894,9 +901,9 @@ async def preprocess_conv_request(
         return request
 
     except Exception as e:
-        logger.error(f"[preprocess] Redis read failed: {e}")
+        logger.error(f"[preprocess] Data read failed: {e}")
         traceback.print_exc()
-        # Use original request if Redis fails
+        # Use original request if read fails
         return request
 
 
@@ -1157,10 +1164,11 @@ async def memorize(request: MemorizeRequest) -> int:
     Main memory extraction process (global queue version)
 
     Flow:
-    1. Extract MemCell
-    2. Save MemCell to database
-    3. Submit to global queue for asynchronous processing by Worker
-    4. Return immediately, do not wait for subsequent processing to complete
+    1. Save request logs and confirm them (sync_status: -1 -> 0)
+    2. Get historical conversation data
+    3. Extract MemCell (boundary detection)
+    4. Save MemCell to database
+    5. Process memory extraction
 
     Returns:
         int: Number of memories extracted (0 if no boundary detected or extraction failed)
@@ -1176,7 +1184,11 @@ async def memorize(request: MemorizeRequest) -> int:
 
     memory_manager = MemoryManager()
     conversation_data_repo = get_bean_by_type(ConversationDataRepository)
-    # ===== MemCell Extraction Phase =====
+
+    # Note: Request logs are saved in controller layer for better timing control
+    # (sync_status=-1, will be confirmed later based on boundary detection result)
+
+    # ===== Preprocess and get historical data =====
     if request.raw_data_type == RawDataType.CONVERSATION:
         request = await preprocess_conv_request(request, current_time)
         if request == None:
@@ -1225,9 +1237,12 @@ async def memorize(request: MemorizeRequest) -> int:
     logger.info("=" * 80)
 
     if memcell == None:
-        # Save new messages to conversation_data_repo
+        # No boundary detected, confirm current messages to accumulation (sync_status: -1 -> 0)
         await conversation_data_repo.save_conversation_data(
             request.new_raw_data_list, request.group_id
+        )
+        logger.info(
+            f"[mem_memorize] No boundary, confirmed {len(request.new_raw_data_list)} messages to accumulation"
         )
         await update_status_when_no_memcell(
             request, status_result, current_time, request.raw_data_type
@@ -1236,27 +1251,30 @@ async def memorize(request: MemorizeRequest) -> int:
         return 0
     else:
         logger.info(f"[mem_memorize] Successfully extracted MemCell")
-        # Judged as boundary, clear conversation history data (restart accumulation)
+        # Judged as boundary, mark all accumulated data as used (restart accumulation)
+        # Exclude current request's new messages so they can start the next accumulation
         try:
-            conversation_data_repo = get_bean_by_type(ConversationDataRepository)
+            new_message_ids = [
+                r.data_id for r in request.new_raw_data_list if r.data_id
+            ]
             delete_success = await conversation_data_repo.delete_conversation_data(
-                request.group_id
+                request.group_id, exclude_message_ids=new_message_ids
             )
             if delete_success:
                 logger.info(
-                    f"[mem_memorize] Judged as boundary, conversation history cleared: group_id={request.group_id}"
+                    f"[mem_memorize] Judged as boundary, history marked as used (excluded {len(new_message_ids)} new): group_id={request.group_id}"
                 )
             else:
                 logger.warning(
                     f"[mem_memorize] Failed to clear conversation history: group_id={request.group_id}"
                 )
-            # Save new messages to conversation_data_repo
+            # Confirm new messages to start the next accumulation cycle
             await conversation_data_repo.save_conversation_data(
                 request.new_raw_data_list, request.group_id
             )
         except Exception as e:
             logger.error(
-                f"[mem_memorize] Exception while clearing conversation history: {e}"
+                f"[mem_memorize] Exception while marking conversation history: {e}"
             )
             traceback.print_exc()
     # TODO: Read status table, read accumulated MemCell data table, determine whether to perform memorize calculation

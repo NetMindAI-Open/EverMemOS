@@ -309,7 +309,7 @@ class TenantInfo:
             >>> tenant_info = TenantInfo(
             ...     tenant_id="t1234567890abcdef",
             ...     tenant_detail=TenantDetail(tenant_info={"account_id": "acc_001"}),
-            ...     origin_tenant_data={"X-Organization-Id": "org_001"}
+            ...     origin_tenant_data={}
             ... )
             >>> json_str = tenant_info.to_json()
         """
