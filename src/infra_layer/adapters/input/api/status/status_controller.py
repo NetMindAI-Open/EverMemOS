@@ -15,7 +15,7 @@ from core.di.utils import get_bean_by_type
 from core.interface.controller.base_controller import BaseController, get
 from core.observation.logger import get_logger
 from core.tenants.request_tenant_provider import RequestTenantProvider
-from biz_layer.request_status_service import RequestStatusService
+from service.request_status_service import RequestStatusService
 from infra_layer.adapters.input.api.dto.status_dto import RequestStatusResponse
 
 

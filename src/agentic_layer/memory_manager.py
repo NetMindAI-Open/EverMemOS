@@ -24,11 +24,13 @@ from .fetch_mem_service import get_fetch_memory_service
 from api_specs.dtos.memory_query import (
     FetchMemRequest,
     FetchMemResponse,
+    PendingMessage,
     RetrieveMemRequest,
     RetrieveMemResponse,
     Metadata,
 )
 from core.di import get_bean_by_type
+from core.oxm.constants import QUERY_ALL
 from infra_layer.adapters.out.search.repository.episodic_memory_es_repository import (
     EpisodicMemoryEsRepository,
 )
@@ -48,6 +50,7 @@ from common_utils.datetime_utils import (
 from infra_layer.adapters.out.persistence.repository.memcell_raw_repository import (
     MemCellRawRepository,
 )
+from service.memory_request_log_service import MemoryRequestLogService
 from infra_layer.adapters.out.persistence.repository.group_user_profile_memory_raw_repository import (
     GroupUserProfileMemoryRawRepository,
 )
@@ -118,6 +121,9 @@ class MemoryManager:
     def __init__(self) -> None:
         # Get memory service instance
         self._fetch_service = get_fetch_memory_service()
+        self._request_log_service: MemoryRequestLogService = get_bean_by_type(
+            MemoryRequestLogService
+        )
 
         logger.info(
             "MemoryManager initialized with fetch_mem_service and retrieve_mem_service"
@@ -203,20 +209,34 @@ class MemoryManager:
                 f"retrieve_method={retrieve_method}, query={retrieve_mem_request.query}"
             )
 
+            # Create task to fetch pending messages concurrently
+            pending_messages_task = asyncio.create_task(
+                self._get_pending_messages(
+                    user_id=retrieve_mem_request.user_id,
+                    group_id=retrieve_mem_request.group_id,
+                )
+            )
+
             # Dispatch based on retrieval method
             match retrieve_method:
                 case RetrieveMethod.KEYWORD:
-                    return await self.retrieve_mem_keyword(retrieve_mem_request)
+                    response = await self.retrieve_mem_keyword(retrieve_mem_request)
                 case RetrieveMethod.VECTOR:
-                    return await self.retrieve_mem_vector(retrieve_mem_request)
+                    response = await self.retrieve_mem_vector(retrieve_mem_request)
                 case RetrieveMethod.HYBRID:
-                    return await self.retrieve_mem_hybrid(retrieve_mem_request)
+                    response = await self.retrieve_mem_hybrid(retrieve_mem_request)
                 case RetrieveMethod.RRF:
-                    return await self.retrieve_mem_rrf(retrieve_mem_request)
+                    response = await self.retrieve_mem_rrf(retrieve_mem_request)
                 case RetrieveMethod.AGENTIC:
-                    return await self.retrieve_mem_agentic(retrieve_mem_request)
+                    response = await self.retrieve_mem_agentic(retrieve_mem_request)
                 case _:
                     raise ValueError(f"Unsupported retrieval method: {retrieve_method}")
+
+            # Await pending messages and attach to response
+            pending_messages = await pending_messages_task
+            response.pending_messages = pending_messages
+
+            return response
 
         except Exception as e:
             logger.error(f"Error in retrieve_mem: {e}", exc_info=True)
@@ -241,7 +261,37 @@ class MemoryManager:
                     ),
                     memory_type="retrieve",
                 ),
+                pending_messages=[],
             )
+
+    async def _get_pending_messages(
+        self, user_id: Optional[str] = None, group_id: Optional[str] = None
+    ) -> List[PendingMessage]:
+        """
+        Get pending (unconsumed) messages from MemoryRequestLogService.
+
+        Fetches cached memory data that hasn't been consumed yet (sync_status=-1 or 0).
+
+        Args:
+            user_id: User ID filter (from retrieve_request)
+            group_id: Group ID filter (from retrieve_request)
+
+        Returns:
+            List of PendingMessage objects
+        """
+        try:
+            result = await self._request_log_service.get_pending_messages(
+                user_id=user_id, group_id=group_id, limit=1000
+            )
+
+            logger.debug(
+                f"Retrieved {len(result)} pending messages: "
+                f"user_id={user_id}, group_id={group_id}"
+            )
+            return result
+        except Exception as e:
+            logger.error(f"Error fetching pending messages: {e}", exc_info=True)
+            return []
 
     # Keyword retrieval method (original retrieve_mem logic)
     @trace_logger(operation_name="agentic_layer keyword memory retrieval")

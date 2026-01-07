@@ -618,7 +618,24 @@ asyncio.run(fetch_memories())
       "source": "episodic_memory_es_repository",
       "user_id": "user_123",
       "memory_type": "retrieve"
-    }
+    },
+    "pending_messages": [
+      {
+        "id": "507f1f77bcf86cd799439012",
+        "request_id": "req_789",
+        "message_id": "msg_003",
+        "group_id": "group_456",
+        "user_id": "user_123",
+        "sender": "user_123",
+        "sender_name": "张三",
+        "group_name": "咖啡讨论组",
+        "content": "我也喜欢喝茶",
+        "refer_list": null,
+        "message_create_time": "2024-01-15T11:00:00",
+        "created_at": "2024-01-15T11:00:01+00:00",
+        "updated_at": "2024-01-15T11:00:01+00:00"
+      }
+    ]
   }
 }
 ```
@@ -629,6 +646,7 @@ asyncio.run(fetch_memories())
 - `importance_scores`: 群组重要性得分，用于排序
 - `total_count`: 总记忆数
 - `has_more`: 是否还有更多结果
+- `pending_messages`: 未消费的缓存消息列表（sync_status=-1 或 0），这些消息已被接收但尚未被提取为记忆，正在等待边界检测或记忆提取
 
 #### 使用示例
 

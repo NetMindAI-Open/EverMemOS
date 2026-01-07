@@ -42,7 +42,7 @@ from infra_layer.adapters.input.api.dto.memory_dto import (
 from core.request.timeout_background import timeout_to_background
 from core.request import log_request
 from core.component.redis_provider import RedisProvider
-from biz_layer.memory_request_log_service import MemoryRequestLogService
+from service.memory_request_log_service import MemoryRequestLogService
 from api_specs.memory_types import RawDataType
 
 logger = logging.getLogger(__name__)

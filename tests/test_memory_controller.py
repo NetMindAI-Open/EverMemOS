@@ -1542,6 +1542,9 @@ class MemoryControllerTester:
         assert (
             "metadata" in result
         ), f"[{scenario_name}] result should contain metadata field"
+        assert (
+            "pending_messages" in result
+        ), f"[{scenario_name}] result should contain pending_messages field"
 
         # Validate data types
         assert isinstance(
@@ -1553,6 +1556,35 @@ class MemoryControllerTester:
         assert (
             result["total_count"] >= 0
         ), f"[{scenario_name}] total_count should be >= 0"
+        assert isinstance(
+            result["pending_messages"], list
+        ), f"[{scenario_name}] pending_messages should be a list"
+
+        # Validate pending_messages structure if not empty
+        if len(result["pending_messages"]) > 0:
+            for idx, msg in enumerate(result["pending_messages"]):
+                assert isinstance(
+                    msg, dict
+                ), f"[{scenario_name}] pending_messages[{idx}] should be a dictionary"
+                # Required fields
+                assert (
+                    "id" in msg
+                ), f"[{scenario_name}] pending_messages[{idx}] should contain id field"
+                assert (
+                    "request_id" in msg
+                ), f"[{scenario_name}] pending_messages[{idx}] should contain request_id field"
+                # Optional fields validation (check type if present)
+                if "message_id" in msg and msg["message_id"] is not None:
+                    assert isinstance(
+                        msg["message_id"], str
+                    ), f"[{scenario_name}] pending_messages[{idx}].message_id should be string"
+                if "content" in msg and msg["content"] is not None:
+                    assert isinstance(
+                        msg["content"], str
+                    ), f"[{scenario_name}] pending_messages[{idx}].content should be string"
+            print(
+                f"    [{scenario_name}] Found {len(result['pending_messages'])} pending messages"
+            )
 
         return result
 

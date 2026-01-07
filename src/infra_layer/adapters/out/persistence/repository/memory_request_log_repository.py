@@ -12,6 +12,7 @@ from pymongo.asynchronous.client_session import AsyncClientSession
 from core.observation.logger import get_logger
 from core.di.decorators import repository
 from core.oxm.mongo.base_repository import BaseRepository
+from core.oxm.constants import QUERY_ALL
 from infra_layer.adapters.out.persistence.document.request.memory_request_log import (
     MemoryRequestLog,
 )
@@ -434,3 +435,120 @@ class MemoryRequestLogRepository(BaseRepository[MemoryRequestLog]):
         except Exception as e:
             logger.error("Failed to mark as used: group_id=%s, error=%s", group_id, e)
             return 0
+
+    # ==================== Flexible Query Methods ====================
+
+    async def find_pending_by_filters(
+        self,
+        user_id: Optional[str] = QUERY_ALL,
+        group_id: Optional[str] = QUERY_ALL,
+        sync_status_list: Optional[List[int]] = None,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None,
+        limit: int = 1000,
+        skip: int = 0,
+        ascending: bool = True,
+        session: Optional[AsyncClientSession] = None,
+    ) -> List[MemoryRequestLog]:
+        """
+        Query pending Memory request logs by flexible filters
+
+        Supports QUERY_ALL logic similar to episodic_memory_raw_repository:
+        - QUERY_ALL ("__all__"): Don't filter by this field
+        - None or "": Filter for null/empty values
+        - Other values: Exact match
+
+        Args:
+            user_id: User ID filter
+                - QUERY_ALL: Don't filter by user_id
+                - None or "": Filter for null/empty values
+                - Other values: Exact match
+            group_id: Group ID filter
+                - QUERY_ALL: Don't filter by group_id
+                - None or "": Filter for null/empty values
+                - Other values: Exact match
+            sync_status_list: List of sync_status values to filter by
+                - Default: [-1, 0] (pending and accumulating, i.e., unconsumed)
+                - [-1]: Just log records
+                - [0]: In window accumulation
+                - [1]: Already fully used
+            start_time: Start time (optional)
+            end_time: End time (optional)
+            limit: Maximum number of records to return
+            skip: Number of records to skip
+            ascending: If True (default), sort by created_at ascending (oldest first);
+                       if False, sort descending (newest first)
+            session: Optional MongoDB session
+
+        Returns:
+            List of MemoryRequestLog
+        """
+        # Default to unconsumed statuses
+        if sync_status_list is None:
+            sync_status_list = [-1, 0]
+
+        try:
+            query = {}
+
+            # Handle user_id filter with QUERY_ALL logic
+            if user_id != QUERY_ALL:
+                if user_id == "" or user_id is None:
+                    # Explicitly filter for null or empty string
+                    query["user_id"] = {"$in": [None, ""]}
+                else:
+                    query["user_id"] = user_id
+
+            # Handle group_id filter with QUERY_ALL logic
+            if group_id != QUERY_ALL:
+                if group_id == "" or group_id is None:
+                    # Explicitly filter for null or empty string
+                    query["group_id"] = {"$in": [None, ""]}
+                else:
+                    query["group_id"] = group_id
+
+            # Filter by sync_status
+            if sync_status_list:
+                if len(sync_status_list) == 1:
+                    query["sync_status"] = sync_status_list[0]
+                else:
+                    query["sync_status"] = {"$in": sync_status_list}
+
+            # Handle time range filter
+            if start_time is not None or end_time is not None:
+                time_filter = {}
+                if start_time is not None:
+                    time_filter["$gte"] = start_time
+                if end_time is not None:
+                    time_filter["$lte"] = end_time
+                query["created_at"] = time_filter
+
+            # Determine sort order
+            sort_order = 1 if ascending else -1
+
+            results = (
+                await MemoryRequestLog.find(query, session=session)
+                .sort([("created_at", sort_order)])
+                .skip(skip)
+                .limit(limit)
+                .to_list()
+            )
+
+            logger.debug(
+                "Query pending Memory request logs: user_id=%s, group_id=%s, "
+                "sync_status_list=%s, skip=%d, limit=%d, count=%d",
+                user_id,
+                group_id,
+                sync_status_list,
+                skip,
+                limit,
+                len(results),
+            )
+            return results
+        except Exception as e:
+            logger.error(
+                "Failed to query pending Memory request logs: user_id=%s, group_id=%s, error=%s",
+                user_id,
+                group_id,
+                e,
+            )
+            return []

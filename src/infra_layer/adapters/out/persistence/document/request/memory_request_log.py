@@ -110,4 +110,11 @@ class MemoryRequestLog(DocumentBase, AuditBase):
             # Composite index: used for batch updates and querying by status
             # Supports operations like update_many({"group_id": "xxx", "sync_status": -1}, ...)
             IndexModel([("group_id", ASCENDING), ("sync_status", ASCENDING)]),
+            IndexModel(
+                [
+                    ("group_id", ASCENDING),
+                    ("user_id", ASCENDING),
+                    ("sync_status", ASCENDING),
+                ]
+            ),
         ]

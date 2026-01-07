@@ -10,11 +10,14 @@ import json
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 
+from common_utils.datetime_utils import to_iso_format
 from core.di import service
 from core.di.utils import get_bean_by_type
 from core.observation.logger import get_logger
 from core.context.context import get_current_app_info
+from core.oxm.constants import QUERY_ALL
 from api_specs.dtos.memory_command import MemorizeRequest, RawData
+from api_specs.dtos.memory_query import PendingMessage
 from infra_layer.adapters.out.persistence.document.request.memory_request_log import (
     MemoryRequestLog,
 )
@@ -272,3 +275,131 @@ class MemoryRequestLogService:
                     result.append(str(msg_id))
 
         return result if result else None
+
+    # ==================== Query Methods ====================
+
+    async def get_pending_request_logs(
+        self,
+        user_id: Optional[str] = QUERY_ALL,
+        group_id: Optional[str] = QUERY_ALL,
+        sync_status_list: Optional[List[int]] = None,
+        limit: int = 1000,
+        skip: int = 0,
+        ascending: bool = True,
+    ) -> List[MemoryRequestLog]:
+        """
+        Get pending (unconsumed) Memory request logs
+
+        Query request logs that have not been consumed yet (sync_status=-1 or 0).
+        Supports flexible filtering with QUERY_ALL logic:
+        - QUERY_ALL ("__all__"): Don't filter by this field
+        - None or "": Filter for null/empty values
+        - Other values: Exact match
+
+        Args:
+            user_id: User ID filter
+                - QUERY_ALL: Don't filter by user_id (default)
+                - None or "": Filter for null/empty values
+                - Other values: Exact match
+            group_id: Group ID filter
+                - QUERY_ALL: Don't filter by group_id (default)
+                - None or "": Filter for null/empty values
+                - Other values: Exact match
+            sync_status_list: List of sync_status values to filter by
+                - Default: [-1, 0] (pending and accumulating, i.e., unconsumed)
+                - [-1]: Just log records
+                - [0]: In window accumulation
+                - [1]: Already fully used
+            limit: Maximum number of records to return (default 100)
+            skip: Number of records to skip (default 0)
+            ascending: If True (default), sort by created_at ascending (oldest first);
+                       if False, sort descending (newest first)
+
+        Returns:
+            List[MemoryRequestLog]: List of pending request logs
+        """
+        # Default to unconsumed statuses
+        if sync_status_list is None:
+            sync_status_list = [-1, 0]
+
+        repo = self._get_repository()
+
+        try:
+            results = await repo.find_pending_by_filters(
+                user_id=user_id,
+                group_id=group_id,
+                sync_status_list=sync_status_list,
+                limit=limit,
+                skip=skip,
+                ascending=ascending,
+            )
+
+            logger.debug(
+                "Retrieved pending request logs: user_id=%s, group_id=%s, "
+                "sync_status_list=%s, count=%d",
+                user_id,
+                group_id,
+                sync_status_list,
+                len(results),
+            )
+            return results
+        except Exception as e:
+            logger.error(
+                "Failed to get pending request logs: user_id=%s, group_id=%s, error=%s",
+                user_id,
+                group_id,
+                e,
+            )
+            return []
+
+    async def get_pending_messages(
+        self,
+        user_id: Optional[str] = QUERY_ALL,
+        group_id: Optional[str] = QUERY_ALL,
+        limit: int = 1000,
+    ) -> List[PendingMessage]:
+        """
+        Get pending (unconsumed) messages as list of PendingMessage objects.
+
+        This is a convenience method that wraps get_pending_request_logs
+        and converts the results to PendingMessage dataclass instances.
+
+        Args:
+            user_id: User ID filter (QUERY_ALL to skip filtering)
+            group_id: Group ID filter (QUERY_ALL to skip filtering)
+            limit: Maximum number of records to return (default 1000)
+
+        Returns:
+            List[PendingMessage]: List of pending messages
+        """
+        logs = await self.get_pending_request_logs(
+            user_id=user_id, group_id=group_id, limit=limit
+        )
+
+        # Convert to list of PendingMessage
+        result = []
+        for log in logs:
+            pending_msg = PendingMessage(
+                id=str(log.id),
+                request_id=log.request_id,
+                message_id=log.message_id,
+                group_id=log.group_id,
+                user_id=log.user_id,
+                sender=log.sender,
+                sender_name=log.sender_name,
+                group_name=log.group_name,
+                content=log.content,
+                refer_list=log.refer_list,
+                message_create_time=log.message_create_time,
+                created_at=to_iso_format(log.created_at),
+                updated_at=to_iso_format(log.updated_at),
+            )
+            result.append(pending_msg)
+
+        logger.debug(
+            "Converted %d pending request logs to PendingMessage: user_id=%s, group_id=%s",
+            len(result),
+            user_id,
+            group_id,
+        )
+        return result

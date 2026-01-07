@@ -86,6 +86,28 @@ class RetrieveMemRequest:
 
 
 @dataclass
+class PendingMessage:
+    """Pending message that has not yet been extracted into memory.
+
+    Represents a cached message waiting for boundary detection or memory extraction.
+    """
+
+    id: str  # MongoDB ObjectId as string
+    request_id: str  # Request ID
+    message_id: Optional[str] = None  # Message ID
+    group_id: Optional[str] = None  # Group ID
+    user_id: Optional[str] = None  # User ID
+    sender: Optional[str] = None  # Sender ID
+    sender_name: Optional[str] = None  # Sender name
+    group_name: Optional[str] = None  # Group name
+    content: Optional[str] = None  # Message content
+    refer_list: Optional[List[str]] = None  # List of referenced message IDs
+    message_create_time: Optional[str] = None  # Message creation time (ISO 8601 format)
+    created_at: Optional[str] = None  # Record creation time (ISO 8601 format)
+    updated_at: Optional[str] = None  # Record update time (ISO 8601 format)
+
+
+@dataclass
 class RetrieveMemResponse:
     """Memory retrieval response"""
 
@@ -101,6 +123,8 @@ class RetrieveMemResponse:
     has_more: bool = False
     query_metadata: Metadata = field(default_factory=Metadata)
     metadata: Metadata = field(default_factory=Metadata)
+    # Pending messages: unconsumed cached memory data (sync_status=-1 or 0)
+    pending_messages: List[PendingMessage] = field(default_factory=list)
 
 
 @dataclass

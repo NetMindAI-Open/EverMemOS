@@ -618,7 +618,24 @@ Retrieve relevant memories based on query text using keyword, vector, or hybrid 
       "source": "episodic_memory_es_repository",
       "user_id": "user_123",
       "memory_type": "retrieve"
-    }
+    },
+    "pending_messages": [
+      {
+        "id": "507f1f77bcf86cd799439012",
+        "request_id": "req_789",
+        "message_id": "msg_003",
+        "group_id": "group_456",
+        "user_id": "user_123",
+        "sender": "user_123",
+        "sender_name": "Zhang San",
+        "group_name": "Coffee Discussion Group",
+        "content": "I also like tea",
+        "refer_list": null,
+        "message_create_time": "2024-01-15T11:00:00",
+        "created_at": "2024-01-15T11:00:01+00:00",
+        "updated_at": "2024-01-15T11:00:01+00:00"
+      }
+    ]
   }
 }
 ```
@@ -629,6 +646,7 @@ Retrieve relevant memories based on query text using keyword, vector, or hybrid 
 - `importance_scores`: Group importance scores used for sorting
 - `total_count`: Total number of memories
 - `has_more`: Whether there are more results
+- `pending_messages`: List of unconsumed cached messages (sync_status=-1 or 0) that have not yet been extracted into memories. These are messages that have been received but are still waiting for boundary detection or memory extraction
 
 #### Usage Examples
 
