@@ -51,19 +51,21 @@ class ConversationMetaRawRepository(BaseRepository[ConversationMeta]):
         return True
 
     async def get_by_group_id(
-        self, group_id: str, session: Optional[AsyncClientSession] = None
+        self, group_id: Optional[str], session: Optional[AsyncClientSession] = None
     ) -> Optional[ConversationMeta]:
         """
-        Get conversation metadata by group ID
+        Get conversation metadata by group ID with automatic fallback to default config
 
         Args:
-            group_id: Group ID
+            group_id: Group ID (can be None to get default config directly)
             session: Optional MongoDB session, used for transaction support
 
         Returns:
-            Conversation metadata object or None
+            Conversation metadata object or None.
+            If group_id is provided but not found, automatically falls back to default config.
         """
         try:
+            # First try to find by exact group_id
             conversation_meta = await self.model.find_one(
                 {"group_id": group_id}, session=session
             )
@@ -72,7 +74,26 @@ class ConversationMetaRawRepository(BaseRepository[ConversationMeta]):
                     "✅ Successfully retrieved conversation metadata by group_id: %s",
                     group_id,
                 )
-            return conversation_meta
+                return conversation_meta
+
+            # If group_id is None or not found, no fallback needed for None case
+            if group_id is None:
+                logger.debug("⚠️ Default conversation metadata not found")
+                return None
+
+            # Fallback to default config (group_id is None)
+            logger.debug(
+                "⚡ group_id %s not found, falling back to default config", group_id
+            )
+            default_meta = await self.model.find_one(
+                {"group_id": None}, session=session
+            )
+            if default_meta:
+                logger.debug("✅ Using default conversation metadata")
+            else:
+                logger.debug("⚠️ No default conversation metadata found")
+            return default_meta
+
         except Exception as e:
             logger.error(
                 "❌ Failed to retrieve conversation metadata by group_id: %s", e
@@ -167,7 +188,7 @@ class ConversationMetaRawRepository(BaseRepository[ConversationMeta]):
 
     async def update_by_group_id(
         self,
-        group_id: str,
+        group_id: Optional[str],
         update_data: Dict[str, Any],
         session: Optional[AsyncClientSession] = None,
     ) -> Optional[ConversationMeta]:
@@ -175,7 +196,7 @@ class ConversationMetaRawRepository(BaseRepository[ConversationMeta]):
         Update conversation metadata by group ID
 
         Args:
-            group_id: Group ID
+            group_id: Group ID (can be None for default config)
             update_data: Dictionary of update data
             session: Optional MongoDB session, used for transaction support
 
@@ -216,7 +237,7 @@ class ConversationMetaRawRepository(BaseRepository[ConversationMeta]):
 
     async def upsert_by_group_id(
         self,
-        group_id: str,
+        group_id: Optional[str],
         conversation_data: Dict[str, Any],
         session: Optional[AsyncClientSession] = None,
     ) -> Optional[ConversationMeta]:
@@ -226,7 +247,7 @@ class ConversationMetaRawRepository(BaseRepository[ConversationMeta]):
         Uses MongoDB atomic upsert operation to avoid concurrency race conditions
 
         Args:
-            group_id: Group ID
+            group_id: Group ID (can be None for default config)
             conversation_data: Conversation metadata dictionary
             session: Optional MongoDB session
 
@@ -267,8 +288,9 @@ class ConversationMetaRawRepository(BaseRepository[ConversationMeta]):
                 new_doc = ConversationMeta(group_id=group_id, **conversation_data)
                 await new_doc.insert(session=session)
                 logger.info(
-                    "✅ Successfully created new conversation metadata: group_id=%s",
+                    "✅ Successfully created new conversation metadata: group_id=%s (is_default=%s)",
                     group_id,
+                    group_id is None,
                 )
                 return new_doc
             except Exception as create_error:
@@ -286,13 +308,13 @@ class ConversationMetaRawRepository(BaseRepository[ConversationMeta]):
             return None
 
     async def delete_by_group_id(
-        self, group_id: str, session: Optional[AsyncClientSession] = None
+        self, group_id: Optional[str], session: Optional[AsyncClientSession] = None
     ) -> bool:
         """
         Delete conversation metadata by group ID
 
         Args:
-            group_id: Group ID
+            group_id: Group ID (can be None for default config)
             session: Optional MongoDB session
 
         Returns:

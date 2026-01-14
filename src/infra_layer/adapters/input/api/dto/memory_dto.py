@@ -248,8 +248,10 @@ class ConversationMetaCreateRequest(BaseModel):
         description="Conversation description",
         examples=["Technical discussion for new feature development"],
     )
-    group_id: str = Field(
-        ..., description="Group unique identifier", examples=["group_123"]
+    group_id: Optional[str] = Field(
+        default=None,
+        description="Group unique identifier. When null/not provided, represents default settings for this scene.",
+        examples=["group_123", None],
     )
     created_at: str = Field(
         ...,
@@ -283,26 +285,64 @@ class ConversationMetaCreateRequest(BaseModel):
 
     model_config = {
         "json_schema_extra": {
-            "example": {
-                "version": "1.0",
-                "scene": "group_chat",
-                "scene_desc": {"bot_ids": ["bot_001"], "type": "project_discussion"},
-                "name": "Project Discussion Group",
-                "description": "Technical discussion for new feature development",
-                "group_id": "group_123",
-                "created_at": "2025-01-15T10:00:00+00:00",
-                "default_timezone": "UTC",
-                "user_details": {
-                    "user_001": {
-                        "full_name": "John Smith",
-                        "role": "developer",
-                        "extra": {"department": "Engineering"},
-                    }
+            "examples": [
+                {
+                    "summary": "With group_id",
+                    "value": {
+                        "version": "1.0",
+                        "scene": "group_chat",
+                        "scene_desc": {
+                            "bot_ids": ["bot_001"],
+                            "type": "project_discussion",
+                        },
+                        "name": "Project Discussion Group",
+                        "description": "Technical discussion for new feature development",
+                        "group_id": "group_123",
+                        "created_at": "2025-01-15T10:00:00+00:00",
+                        "default_timezone": "UTC",
+                        "user_details": {
+                            "user_001": {
+                                "full_name": "John Smith",
+                                "role": "developer",
+                                "extra": {"department": "Engineering"},
+                            }
+                        },
+                        "tags": ["work", "technical"],
+                    },
                 },
-                "tags": ["work", "technical"],
-            }
+                {
+                    "summary": "Default config (group_id is null)",
+                    "value": {
+                        "version": "1.0",
+                        "scene": "group_chat",
+                        "scene_desc": {"bot_ids": ["default_bot"]},
+                        "name": "Default Group Chat Settings",
+                        "description": "Default settings for group_chat scene",
+                        "group_id": None,
+                        "created_at": "2025-01-15T10:00:00+00:00",
+                        "default_timezone": "UTC",
+                        "tags": ["default"],
+                    },
+                },
+            ]
         }
     }
+
+
+class ConversationMetaGetRequest(BaseModel):
+    """
+    Get conversation metadata request parameters
+
+    Used for GET /api/v1/memories/conversation-meta endpoint
+    """
+
+    group_id: Optional[str] = Field(
+        default=None,
+        description="Group ID to look up. If not found, will automatically fallback to default config (group_id=null). If not provided, returns default config directly.",
+        examples=["group_123"],
+    )
+
+    model_config = {"json_schema_extra": {"example": {"group_id": "group_123"}}}
 
 
 class ConversationMetaPatchRequest(BaseModel):
@@ -312,8 +352,10 @@ class ConversationMetaPatchRequest(BaseModel):
     Used for PATCH /api/v1/memories/conversation-meta endpoint
     """
 
-    group_id: str = Field(
-        ..., description="Group ID to update (required)", examples=["group_123"]
+    group_id: Optional[str] = Field(
+        default=None,
+        description="Group ID to update. When null, updates the default config.",
+        examples=["group_123", None],
     )
     name: Optional[str] = Field(
         default=None,
@@ -344,11 +386,20 @@ class ConversationMetaPatchRequest(BaseModel):
 
     model_config = {
         "json_schema_extra": {
-            "example": {
-                "group_id": "group_123",
-                "name": "New Conversation Name",
-                "tags": ["updated", "tags"],
-            }
+            "examples": [
+                {
+                    "summary": "Update by group_id",
+                    "value": {
+                        "group_id": "group_123",
+                        "name": "New Conversation Name",
+                        "tags": ["updated", "tags"],
+                    },
+                },
+                {
+                    "summary": "Update default config (group_id is null)",
+                    "value": {"group_id": None, "name": "Updated Default Settings"},
+                },
+            ]
         }
     }
 
@@ -356,9 +407,9 @@ class ConversationMetaPatchRequest(BaseModel):
 class DeleteMemoriesRequest(BaseModel):
     """
     Delete memories request body
-    
+
     Used for DELETE /api/v1/memories endpoint
-    
+
     Notes:
     - event_id, user_id, group_id are combined filter conditions
     - If all three are provided, all conditions must be met
@@ -424,5 +475,63 @@ class DeleteMemoriesRequest(BaseModel):
                     },
                 },
             ]
+        }
+    }
+
+
+class ConversationMetaResponse(BaseModel):
+    """
+    Conversation metadata response DTO
+
+    Used for GET /api/v1/memories/conversation-meta response
+    """
+
+    id: str = Field(..., description="Document ID")
+    group_id: Optional[str] = Field(
+        default=None, description="Group ID (null for default config)"
+    )
+    scene: str = Field(..., description="Scene identifier")
+    scene_desc: Optional[Dict[str, Any]] = Field(
+        default=None, description="Scene description"
+    )
+    name: str = Field(..., description="Conversation name")
+    description: Optional[str] = Field(
+        default=None, description="Conversation description"
+    )
+    version: str = Field(..., description="Metadata version")
+    conversation_created_at: str = Field(..., description="Conversation creation time")
+    default_timezone: Optional[str] = Field(
+        default=None, description="Default timezone"
+    )
+    user_details: Dict[str, Dict[str, Any]] = Field(
+        default_factory=dict, description="User details"
+    )
+    tags: List[str] = Field(default_factory=list, description="Tags")
+    is_default: bool = Field(
+        default=False, description="Whether this is the default config"
+    )
+    created_at: Optional[str] = Field(default=None, description="Record creation time")
+    updated_at: Optional[str] = Field(default=None, description="Record update time")
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "id": "507f1f77bcf86cd799439011",
+                "group_id": "group_123",
+                "scene": "group_chat",
+                "scene_desc": {"bot_ids": ["bot_001"]},
+                "name": "Project Discussion",
+                "description": "Technical discussion group",
+                "version": "1.0",
+                "conversation_created_at": "2025-01-15T10:00:00+00:00",
+                "default_timezone": "UTC",
+                "user_details": {
+                    "user_001": {"full_name": "John", "role": "developer"}
+                },
+                "tags": ["work", "tech"],
+                "is_default": False,
+                "created_at": "2025-01-15T10:00:00+00:00",
+                "updated_at": "2025-01-15T10:00:00+00:00",
+            }
         }
     }

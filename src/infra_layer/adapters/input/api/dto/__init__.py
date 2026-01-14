@@ -10,7 +10,9 @@ from .memory_dto import (
     FetchMemoriesParams,
     SearchMemoriesRequest,
     ConversationMetaCreateRequest,
+    ConversationMetaGetRequest,
     ConversationMetaPatchRequest,
+    ConversationMetaResponse,
     UserDetailRequest,
 )
 
@@ -23,6 +25,8 @@ __all__ = [
     "FetchMemoriesParams",
     "SearchMemoriesRequest",
     "ConversationMetaCreateRequest",
+    "ConversationMetaGetRequest",
     "ConversationMetaPatchRequest",
+    "ConversationMetaResponse",
     "UserDetailRequest",
 ]
