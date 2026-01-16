@@ -76,17 +76,25 @@ class MemoryController(BaseController):
     @post(
         "",
         response_model=Dict[str, Any],
-        summary="Store single group chat message memory",
+        summary="Store single message",
         description="""
-        Receive a single message payload and store it as memory
+        Store a single message into memory.
+        
+        ## Fields:
+        - **message_id** (required): Unique identifier for the message
+        - **create_time** (required): Message creation time (ISO 8601 format)
+        - **sender** (required): Sender user ID
+        - **content** (required): Message content
+        - **group_id** (optional): Group ID
+        - **group_name** (optional): Group name
+        - **sender_name** (optional): Sender display name (defaults to sender if empty)
+        - **role** (optional): Sender role ("user" or "assistant")
+        - **refer_list** (optional): List of referenced message IDs
         
         ## Functionality:
-        - Accept raw single-message data (no pre-conversion required)
-        - Create memories when enough context is available
-        - Response returns extraction count and status (saved memories are fetched via API)
-        
-        ## Interface description:
-        - Accept a simple single-message JSON payload
+        - Accepts raw single-message data
+        - Automatically creates memories when sufficient context is available
+        - Returns extraction count and status
         """,
         responses={
             200: {
@@ -279,16 +287,18 @@ class MemoryController(BaseController):
         description="""
         Retrieve memory records by memory_type with optional filters
         
-        ## Functionality:
-        - Fetch by user_id/group_id with optional time range filters
-        - Support memory types: profile, episodic_memory, event_log, foresight
-        - Accept parameters via query string or JSON body (GET with body supported)
-        - Suitable for quick lookup without full-text retrieval
-        
-        ## Memory type descriptions:
-        - **episodic_memory / event_log**: Filterable by timestamp
-        - **foresight**: Filtered by active time window
-        - **profile**: No time range filtering
+        ## Fields:
+        - **user_id** (required): User ID
+        - **memory_type** (optional): Memory type (default: episodic_memory)
+            - profile: user profile
+            - episodic_memory: episodic memory
+            - foresight: prospective memory
+            - event_log: event log (atomic facts)
+        - **limit** (optional): Max records to return (default: 10, max: 100)
+        - **offset** (optional): Pagination offset (default: 0)
+        - **sort_by** (optional): Sort field
+        - **sort_order** (optional): Sort direction (asc/desc, default: desc)
+        - **version_range** (optional): Version range filter [start, end]
         
         ## Use cases:
         - User profile display
@@ -449,31 +459,31 @@ class MemoryController(BaseController):
         description="""
         Retrieve relevant memory data based on query text using multiple retrieval methods
         
-        ## Functionality:
-        - Find most relevant memories based on query text
-        - Support keyword (BM25), vector similarity, hybrid search, RRF fusion, and agentic retrieval
-        - Support time range filtering
-        - Return results organized by group with relevance scores
-        - Suitable for scenarios requiring exact matching or semantic retrieval
-        
-        ## Search method descriptions:
-        - **keyword**: Keyword-based BM25 search, suitable for exact matching, fast (default method)
-        - **vector**: Semantic vector-based similarity search, suitable for fuzzy queries and semantic similarity
-        - **hybrid**: Hybrid search strategy combining advantages of keyword and vector search (recommended)
-        - **rrf**: RRF fusion search, keyword + vector + RRF ranking fusion
-        - **agentic**: LLM-guided multi-round intelligent retrieval
+        ## Fields:
+        - **query** (optional): Search query text
+        - **user_id** (optional): User ID (at least one of user_id/group_id required)
+        - **group_id** (optional): Group ID (at least one of user_id/group_id required)
+        - **retrieve_method** (optional): Retrieval method (default: keyword)
+            - keyword: keyword retrieval (BM25)
+            - vector: vector semantic retrieval
+            - hybrid: hybrid retrieval (keyword + vector)
+            - rrf: RRF fusion retrieval
+            - agentic: LLM-guided multi-round retrieval
+        - **top_k** (optional): Max results (default: 10, max: 100)
+        - **memory_types** (optional): List of memory types to search
+            - episodic_memory
+            - foresight
+            - event_log
+        - **start_time** (optional): Start time (ISO 8601)
+        - **end_time** (optional): End time (ISO 8601)
+        - **radius** (optional): Similarity threshold (0.0-1.0) for vector search
+        - **include_metadata** (optional): Whether to include metadata (default: true)
         
         ## Result description:
         - Memories returned organized by group
         - Each group contains multiple relevant memories sorted by time
         - Groups sorted by importance score, most important group first
         - Each memory has a relevance score indicating match degree with query
-        
-        ## Use cases:
-        - Conversation context understanding
-        - Intelligent Q&A systems
-        - Relevant content recommendations
-        - Memory clue tracing
         """,
         responses={
             200: {
@@ -495,6 +505,7 @@ class MemoryController(BaseController):
                                         "has_more": {"type": "boolean"},
                                         "query_metadata": {"type": "object"},
                                         "metadata": {"type": "object"},
+                                        "pending_messages": {"type": "array"},
                                     },
                                 },
                             },
@@ -532,6 +543,7 @@ class MemoryController(BaseController):
                                     "user_id": "user_123",
                                     "memory_type": "retrieve",
                                 },
+                                "pending_messages": [],
                             },
                         },
                     }
