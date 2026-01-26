@@ -171,6 +171,40 @@ class ProfileModel:
 
 
 @dataclass
+class GlobalUserProfileModel:
+    """Global user profile model
+
+    Stores global user profile information (not bound to a specific group).
+    Compatible with GlobalUserProfile document structure.
+    """
+
+    id: str
+    user_id: str
+    profile_data: Optional[Dict[str, Any]] = None
+    custom_profile_data: Optional[Dict[str, Any]] = None
+    confidence: float = 0.0
+    memcell_count: int = 0
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+@dataclass
+class CombinedProfileModel:
+    """Combined profile model
+
+    Contains both group-level profile and global user profile.
+    Used when fetching PROFILE memory type.
+    """
+
+    user_id: str
+    group_id: Optional[str] = None
+    # Group-level profiles (may have multiple for different groups)
+    profiles: List[ProfileModel] = field(default_factory=list)
+    # Global user profile (one per user per scenario)
+    global_profile: Optional[GlobalUserProfileModel] = None
+
+
+@dataclass
 class PreferenceModel:
     """User preference model"""
 
@@ -372,6 +406,8 @@ MemoryModel = Union[
     # BaseMemoryModel,
     # PreferenceModel,
     ProfileModel,
+    GlobalUserProfileModel,
+    CombinedProfileModel,
     EpisodicMemoryModel,
     # EntityModel,
     # RelationModel,
