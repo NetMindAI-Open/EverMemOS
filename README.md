@@ -37,7 +37,7 @@
 
 > [!NOTE]
 >
-> *** Memory Genesis Hackathon 2026
+> ### Memory Genesis Hackathon 2026
 > 
 > Join our AI Memory Hackathon! Build innovative applications, plugins, or infrastructure improvements powered by EverMemOS.
 > 
