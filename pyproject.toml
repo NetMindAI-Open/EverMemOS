@@ -3,7 +3,7 @@ name = "memsys"
 version = "0.1.0"
 description = "Memory System with Dynamic and Static Memory Management"
 license = {text = "Apache-2.0"}
-requires-python = ">=3.12,<3.13"
+requires-python = ">=3.12"
 dependencies = [
     # Core Dependencies
     "langgraph>=0.2.6",
