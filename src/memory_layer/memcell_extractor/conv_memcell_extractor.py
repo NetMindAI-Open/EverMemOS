@@ -72,7 +72,7 @@ class ConvMemCellExtractor(MemCellExtractor):
 
     # Default limits for force splitting
     DEFAULT_HARD_TOKEN_LIMIT = 8192
-    DEFAULT_HARD_MESSAGE_LIMIT = 50
+    DEFAULT_HARD_MESSAGE_LIMIT = 10  # 降低阈值便于测试（原值：50）
 
     @classmethod
     def _get_tokenizer(cls):
